@@ -170,9 +170,9 @@ function renderToScreen(target) {
 }
 
 function triggerHighResSave() {
-  // Устанавливаем жесткий, но безопасный лимит разрешения для мобильных браузеров (12 мегапикселей)
-  // Это убережет устройство от вылета по памяти, сохранив безупречную четкость
-  const MAX_EXPORT_PIXELS = 12000000; 
+  // Железобетонный мобильный лимит в 4 Мп (около 2000х2000px).
+  // Это сохраняет высокую детализацию узоров, но вкладка гарантированно не падает.
+  const MAX_EXPORT_PIXELS = 4000000; 
   let exportW = img.width;
   let exportH = img.height;
   
@@ -182,17 +182,17 @@ function triggerHighResSave() {
     exportH = floor(exportH * scale);
   }
 
-  // Создаем скрытый буфер строго в безопасных границах
   let exportCanvas = createGraphics(exportW, exportH);
   
-  // Рисуем исходник прямо на буфер без ресурсоемкого копирования .get()
+  // Переносим обработку цвета на видеокарту через контекст отрисовщика.
+  // Заменяет ресурсоемкий метод .filter(GRAY) из p5.js, сохраняя оперативку.
+  exportCanvas.drawingContext.filter = 'grayscale(100%)';
   exportCanvas.image(img, 0, 0, exportW, exportH);
-  exportCanvas.filter(GRAY);
+  exportCanvas.drawingContext.filter = 'none'; 
   
   let currentP = floor(patternIndex);
   exportCanvas.imageMode(CENTER);
   
-  // Пропорционально пересчитываем размер шага сетки под экспортный холст
   let origRectS = (rectS / canvasDisplayWidth) * exportW;
   
   for (let gx = 0; gx < exportW; gx += origRectS) {
@@ -207,7 +207,6 @@ function triggerHighResSave() {
       let idx = workX + workY * workingImg.width;
       
       if (idx >= 0 && idx < mask.length && mask[idx]) {
-        // Вычисляем сетку на основе экспортной системы координат, привязываясь к оригинальным пропорциям экрана
         let screenGridX = floor(map(gx, 0, exportW, 0, canvasDisplayWidth) / rectS);
         let screenGridY = floor(map(gy, 0, exportH, 0, canvasDisplayHeight) / rectS);
         let tIdx = (screenGridX % 4) + (screenGridY % 4) * 4;
@@ -220,25 +219,29 @@ function triggerHighResSave() {
   let timestamp = floor(Date.now() / 1000);
   let fileName = `render_${timestamp}.png`;
   
-  // Нативный экспорт через Blob — не ломает DOM-структуру страницы
-  exportCanvas.elt.toBlob(function(blob) {
-    if (blob) {
-      let url = URL.createObjectURL(blob);
-      let a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } else {
-      exportCanvas.save(fileName);
-    }
-    
-    // Мгновенно выгружаем скрытый холст из памяти смартфона
-    exportCanvas.remove();
-  }, 'image/png');
+  // Добавляем микро-паузу перед сборкой Blob, давая браузеру распределить ресурсы
+  setTimeout(() => {
+    exportCanvas.elt.toBlob(function(blob) {
+      if (blob) {
+        let url = URL.createObjectURL(blob);
+        let a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        
+        // Даем браузеру системную задержку на подхват скачивания, затем чистим DOM и буфер
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          exportCanvas.remove();
+        }, 300);
+      } else {
+        exportCanvas.save(fileName);
+        exportCanvas.remove();
+      }
+    }, 'image/png');
+  }, 50);
 }
 
 function mousePressed(event) {

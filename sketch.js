@@ -11,7 +11,7 @@ let selectedColor;
 let isSelected = false;
 let mask = []; 
 
-// Настройка maximalной высоты окна НА ЭКРАНЕ
+// Настройка максимальной высоты окна НА ЭКРАНЕ
 const MAX_DISPLAY_HEIGHT = 800; 
 
 // Текущие экранные размеры холста (для draw и mouse)
@@ -176,28 +176,41 @@ function renderToBuffer() {
   mainRenderBuffer.imageMode(CORNER);
 }
 
-function mousePressed() {
-  let targetX = mouseX;
-  let targetY = mouseY;
+// Обработка клика мыши
+function mousePressed(event) {
+  // Игнорируем тачи (чтобы не было дубля) и клики мимо холста (по меню)
+  if (touches.length > 0) return; 
+  if (event && event.target && event.target.tagName.toLowerCase() !== 'canvas') return;
 
-  // Универсальный перехват: если это тачскрин смартфона, берем координаты пальца
+  handleInput(mouseX, mouseY);
+}
+
+// Обработка мобильного тача
+function touchStarted(event) {
+  // Если тапнули по нашему меню (слайдерам, кнопкам), разрешаем им работать
+  if (event && event.target && event.target.tagName.toLowerCase() !== 'canvas') return;
+  
   if (touches && touches.length > 0) {
-    // Вычитаем CSS-сдвиг холста (margin-left: 165px, margin-top: 15px)
-    targetX = touches[0].x - 165;
-    targetY = touches[0].y - 15;
+    // Больше ничего не вычитаем — p5.js сам отдает координаты внутри холста!
+    handleInput(touches[0].x, touches[0].y);
   }
+  
+  return false; // Блокируем скролл страницы только при таппе по самому холсту
+}
 
-  // Проверяем попадание клика/тача точно в границы холста
+// Единый алгоритм расчета маски
+function handleInput(targetX, targetY) {
   if (targetX >= 0 && targetX < width && targetY >= 0 && targetY < height) {
     let origX = floor(map(targetX, 0, width, 0, img.width));
     let origY = floor(map(targetY, 0, height, 0, img.height));
     
+    // Подстраховка от выхода за границы картинки
+    origX = constrain(origX, 0, img.width - 1);
+    origY = constrain(origY, 0, img.height - 1);
+    
     selectedColor = ditheredBase.get(origX, origY);
     updateMask(); 
     isSelected = true;
-    
-    // Предотвращает нежелательный скролл или зум страницы на мобильных устройствах
-    return false;
   }
 }
 
@@ -208,6 +221,10 @@ function updateMask() {
   let selB = blue(selectedColor);
 
   let len = ditheredBase.pixels.length;
+  if (mask.length !== len / 4) {
+    mask = new Array(len / 4).fill(false);
+  }
+
   for (let i = 0; i < len; i += 4) {
     let r = ditheredBase.pixels[i];
     let g = ditheredBase.pixels[i + 1];
@@ -294,7 +311,6 @@ function applyNewImage(newImg) {
   let imgRatio = img.width / img.height;
   canvasDisplayHeight = MAX_DISPLAY_HEIGHT;
   
-  // Учитываем ширину меню при расчёте максимальной доступной ширины на экране
   let maxAvailableWidth = windowWidth - 190; 
   canvasDisplayWidth = Math.floor(MAX_DISPLAY_HEIGHT * imgRatio);
   

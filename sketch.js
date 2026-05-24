@@ -11,7 +11,6 @@ let selectedColor;
 let isSelected = false;
 let mask = []; 
 
-// Текущие экранные размеры холста (для draw и mouse)
 let canvasDisplayWidth = 100;
 let canvasDisplayHeight = 100;
 
@@ -22,7 +21,6 @@ let panelContainer;
 let sliderSize, sliderPattern, sliderThreshold, sliderFactor;
 let btnReset, btnSave, btnUpload, menuImages;
 
-// Буферы для рендеринга в оригинальном качестве
 let mainRenderBuffer; 
 
 function preload() {
@@ -36,43 +34,68 @@ function preload() {
 }
 
 function setup() {
-  // Создаем базовый холст
   let cnv = createCanvas(100, 100);
   
-  // HTML-контейнер для интерфейса (увеличен в 2 раза: width 135px -> 270px, отступы 15px -> 30px)
+  // Создаем контейнер меню
   panelContainer = createDiv('');
-  panelContainer.position(30, 30);
-  panelContainer.style('background-color', 'rgba(0, 0, 0, 0.85)');
-  panelContainer.style('padding', '16px'); 
-  panelContainer.style('width', '270px'); 
-  panelContainer.style('color', '#fff');
-  panelContainer.style('font-family', 'sans-serif');
-  panelContainer.style('font-size', '16px'); // Текст х2
-  panelContainer.style('border-radius', '6px');
-  panelContainer.style('z-index', '999');
-  panelContainer.style('line-height', '1.2');
-
-  // Защита от кликов и тачей сквозь меню
-  panelContainer.elt.addEventListener('mousedown', (e) => { e.stopPropagation(); });
-  panelContainer.elt.addEventListener('touchstart', (e) => { e.stopPropagation(); });
-
-  // Стили для увеличенных элементов управления
-  let styleSheet = createElement('style', `
-    body { background-color: #1a1a1a; margin: 0; padding: 0; }
-    .mini-panel input[type=range] { height: 20px; margin: 4px 0 12px 0; }
-    .mini-panel button { font-size: 16px; padding: 4px 10px; background: #444; color: #FFFFFF; border: none; border-radius: 4px; cursor: pointer; }
-    .mini-panel button:hover { background: #666; }
-    .mini-panel select { font-size: 16px; padding: 4px; background: #333; color: #fff; border: 1px solid #555; }
-    .mini-panel input[type=file] { font-size: 14px; max-width: 100%; color: #aaa; margin-bottom: 12px; }
-  `);
   panelContainer.addClass('mini-panel');
+
+  // Полная защита элементов интерфейса от прокликивания насквозь
+  panelContainer.elt.addEventListener('mousedown', (e) => { e.stopPropagation(); });
+  panelContainer.elt.addEventListener('touchstart', (e) => { e.stopPropagation(); }, {passive: true});
+  panelContainer.elt.addEventListener('touchmove', (e) => { e.stopPropagation(); }, {passive: true});
+
+  // Адаптивные стили через CSS: на десктопе меню слева, на мобилках — компактно сверху/снизу
+  let styleSheet = createElement('style', `
+    body { background-color: #1a1a1a; margin: 0; padding: 0; overflow: hidden; font-family: sans-serif; }
+    
+    /* Базовый вид панели (десктоп) */
+    .mini-panel {
+      position: absolute;
+      top: 30px;
+      left: 30px;
+      background-color: rgba(0, 0, 0, 0.85);
+      padding: 16px;
+      width: 270px;
+      color: #fff;
+      font-size: 16px;
+      border-radius: 6px;
+      z-index: 999;
+      line-height: 1.2;
+      box-sizing: border-box;
+    }
+    
+    .mini-panel input[type=range] { width: 100%; height: 20px; margin: 4px 0 12px 0; }
+    .mini-panel button { font-size: 16px; padding: 6px 12px; background: #444; color: #FFFFFF; border: none; border-radius: 4px; cursor: pointer; }
+    .mini-panel button:hover { background: #666; }
+    .mini-panel select { font-size: 16px; padding: 6px; background: #333; color: #fff; border: 1px solid #555; width: 100%; margin-top: 4px; }
+    .mini-panel input[type=file] { font-size: 14px; max-width: 100%; color: #aaa; margin-bottom: 12px; }
+    
+    /* Стили для мобильных экранов (ширина меньше 768px) */
+    @media (max-width: 768px) {
+      .mini-panel {
+        top: auto;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        max-height: 40vh;
+        overflow-y: auto;
+        border-radius: 12px 12px 0 0;
+        padding: 12px;
+        font-size: 14px;
+        background-color: rgba(0, 0, 0, 0.9);
+      }
+      .mini-panel input[type=range] { height: 24px; margin: 2px 0 6px 0; }
+      .mini-panel button { font-size: 14px; padding: 4px 10px; }
+      .mini-panel select { font-size: 14px; padding: 4px; }
+    }
+  `);
 
   function createLabeledSlider(label, min, max, value, step) {
     let panelRow = createDiv(label + ': ');
     panelRow.parent(panelContainer);
     let slider = createSlider(min, max, value, step);
     slider.parent(panelRow);
-    slider.style('width', '100%');
     return slider;
   }
 
@@ -116,12 +139,9 @@ function setup() {
 
   let menuRow = createDiv('SELECT IMAGE:<br>');
   menuRow.parent(panelContainer);
-  menuRow.style('margin-top', '8px');
   
   menuImages = createSelect();
   menuImages.parent(menuRow);
-  menuImages.style('width', '100%');
-  menuImages.style('margin-top', '4px');
   
   for (let i = 0; i < defaultImages.length; i++) {
     menuImages.option(defaultImages[i]);
@@ -138,7 +158,7 @@ function setup() {
 }
 
 function draw() {
-  background(0);
+  background(26); // Цвет #1a1a1a, чтобы не было видно краев при центрировании
   
   if (!isSelected) {
     image(ditheredBase, 0, 0, width, height); 
@@ -148,12 +168,10 @@ function draw() {
   }
 }
 
-// При изменении размеров окна браузера пересчитываем Fit-масштаб холста
 function windowResized() {
   applyNewImage(img);
 }
 
-// Обработка клика мыши
 function mousePressed(event) {
   if (touches.length > 0) return; 
   if (event && event.target && event.target.tagName.toLowerCase() !== 'canvas') return;
@@ -161,7 +179,6 @@ function mousePressed(event) {
   handleInput(mouseX, mouseY);
 }
 
-// Обработка мобильного тача
 function touchStarted(event) {
   if (event && event.target && event.target.tagName.toLowerCase() !== 'canvas') return;
   
@@ -172,7 +189,6 @@ function touchStarted(event) {
   return false; 
 }
 
-// Единый алгоритм расчета маски
 function handleInput(targetX, targetY) {
   if (targetX >= 0 && targetX < width && targetY >= 0 && targetY < height) {
     let origX = floor(map(targetX, 0, width, 0, img.width));
@@ -240,6 +256,7 @@ function updateDitherBase() {
   if (isSelected) updateMask();
 }
 
+// Алгоритм Флойда-Штейнберга без изменений
 function applyFullDither(p, f) {
   p.loadPixels();
   let w = p.width;
@@ -302,38 +319,57 @@ function handleMenuChange() {
 
 function applyNewImage(newImg) {
   img = newImg; 
-  
-  // Доступная рабочая зона: вычитаем ширину меню (270px) + отступы с запасом (60px)
-  let menuReservedWidth = 330; 
-  let padding = 40; // Отступы сверху/снизу, чтобы картинка не прилипала к краям экрана
-  
-  let availableWidth = windowWidth - menuReservedWidth - padding;
-  let availableHeight = windowHeight - padding;
-  
   let imgRatio = img.width / img.height;
   
-  // Логика FIT: подбираем размеры холста так, чтобы картинка заполнила максимум пространства, не обрезаясь
-  if (availableWidth / availableHeight > imgRatio) {
-    // Ограничитель — высота экрана
-    canvasDisplayHeight = availableHeight;
-    canvasDisplayWidth = Math.floor(availableHeight * imgRatio);
+  let availableWidth, availableHeight;
+  let marginLeft, marginTop;
+  let padding = 30;
+
+  // Проверяем, десктоп это или мобилка (граница по 768px)
+  if (windowWidth > 768) {
+    // ДЕСКТОП: меню слева (330px), холст в оставшейся правой части
+    let menuReservedWidth = 330; 
+    availableWidth = windowWidth - menuReservedWidth - padding;
+    availableHeight = windowHeight - padding;
+    
+    if (availableWidth / availableHeight > imgRatio) {
+      canvasDisplayHeight = availableHeight;
+      canvasDisplayWidth = Math.floor(availableHeight * imgRatio);
+    } else {
+      canvasDisplayWidth = availableWidth;
+      canvasDisplayHeight = Math.floor(availableWidth / imgRatio);
+    }
+    
+    // Центрируем холст в свободном правом секторе
+    marginLeft = menuReservedWidth + Math.floor((availableWidth - canvasDisplayWidth) / 2);
+    marginTop = Math.floor((windowHeight - canvasDisplayHeight) / 2);
   } else {
-    // Ограничитель — ширина доступной зоны
-    canvasDisplayWidth = availableWidth;
-    canvasDisplayHeight = Math.floor(availableWidth / imgRatio);
+    // МОБИЛКА: меню уходит вниз, холст занимает верхнюю часть и центрируется по экрану
+    availableWidth = windowWidth - padding;
+    // Оставляем снизу 35% высоты под мобильное меню
+    availableHeight = (windowHeight * 0.65) - padding; 
+    
+    if (availableWidth / availableHeight > imgRatio) {
+      canvasDisplayHeight = availableHeight;
+      canvasDisplayWidth = Math.floor(availableHeight * imgRatio);
+    } else {
+      canvasDisplayWidth = availableWidth;
+      canvasDisplayHeight = Math.floor(availableWidth / imgRatio);
+    }
+    
+    // Честное центрирование по ширине телефона
+    marginLeft = Math.floor((windowWidth - canvasDisplayWidth) / 2);
+    marginTop = Math.floor(((windowHeight * 0.65) - canvasDisplayHeight) / 2) + 10;
   }
   
   resizeCanvas(canvasDisplayWidth, canvasDisplayHeight);
   
-  // Автоматическое центрирование: считаем отступ слева в оставшемся после меню пространстве
-  let marginLeft = menuReservedWidth + Math.floor((availableWidth - canvasDisplayWidth) / 2);
-  let marginTop = Math.floor((windowHeight - canvasDisplayHeight) / 2);
-  
-  // Применяем вычисленные центры через CSS к тегу canvas
+  // Применяем маргины
   let canvasElement = select('canvas');
   if (canvasElement) {
     canvasElement.style('margin-left', marginLeft + 'px');
     canvasElement.style('margin-top', marginTop + 'px');
+    canvasElement.style('position', 'absolute');
   }
   
   mainRenderBuffer = createGraphics(img.width, img.height);

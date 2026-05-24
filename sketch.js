@@ -2,8 +2,8 @@
 let totalShapes = 13;
 let tiles = []; 
 
-let img; // Оригинальное изображение (полное разрешение для сохранения)
-let workingImg; // Облегченная копия для расчетов и дизеринга на экране
+let img; // Оригинальное изображение (только для SAVE)
+let workingImg; // Рабочая копия для экрана
 let bwImg, ditheredBase;
 let rectS = 15; 
 let patternIndex = 0; 
@@ -13,8 +13,8 @@ let selectedColor;
 let isSelected = false;
 let mask = []; 
 
-// Лимит для рабочей копии (максимальная сторона в пикселях для стабильности на мобилках)
-const MAX_WORKING_SIZE = 1500; 
+// Лимит для рабочей копии (гарантирует стабильность на смартфонах)
+const MAX_WORKING_SIZE = 1024; 
 const MAX_DISPLAY_HEIGHT = 800; 
 
 let canvasDisplayWidth = 100;
@@ -27,7 +27,8 @@ let panelContainer;
 let sliderSize, sliderPattern, sliderThreshold, sliderFactor;
 let btnReset, btnSave, btnUpload, menuImages;
 
-let mainRenderBuffer; 
+// Быстрый экранный буфер для отрисовки без лагов
+let screenRenderBuffer; 
 
 function preload() {
   for (let i = 0; i < totalShapes; i++) {
@@ -107,9 +108,7 @@ function setup() {
   btnSave = createButton('SAVE');
   btnSave.parent(btnRow);
   btnSave.mousePressed(() => {
-    let timestamp = floor(Date.now() / 1000);
-    renderToBuffer();
-    save(mainRenderBuffer, `render_${timestamp}.png`);
+    saveHighRes();
   });
 
   btnUpload = createFileInput(handleFile);
@@ -144,25 +143,56 @@ function draw() {
   if (!isSelected) {
     image(ditheredBase, 0, 0, width, height); 
   } else {
-    renderToBuffer();
-    image(mainRenderBuffer, 0, 0, width, height);
+    renderToScreenBuffer();
+    image(screenRenderBuffer, 0, 0, width, height);
   }
 }
 
-function renderToBuffer() {
-  mainRenderBuffer.clear();
-  mainRenderBuffer.image(bwImg, 0, 0); 
+// Быстрый рендер превью для экрана (работает с workingImg)
+function renderToScreenBuffer() {
+  screenRenderBuffer.clear();
+  screenRenderBuffer.image(bwImg, 0, 0, width, height); 
 
   let currentP = floor(patternIndex);
-  mainRenderBuffer.imageMode(CENTER);
+  screenRenderBuffer.imageMode(CENTER);
   
-  // Вычисляем шаг сетки для буфера оригинального изображения
+  for (let gx = 0; gx < width; gx += rectS) {
+    for (let gy = 0; gy < height; gy += rectS) {
+      
+      let workX = floor(map(gx + rectS / 2, 0, width, 0, workingImg.width));
+      let workY = floor(map(gy + rectS / 2, 0, height, 0, workingImg.height));
+      
+      workX = constrain(workX, 0, workingImg.width - 1);
+      workY = constrain(workY, 0, workingImg.height - 1);
+      
+      let idx = workX + workY * workingImg.width;
+      
+      if (idx >= 0 && idx < mask.length && mask[idx]) {
+        let tIdx = (floor(gx / rectS) % 4) + (floor(gy / rectS) % 4) * 4;
+        screenRenderBuffer.image(tiles[currentP][tIdx], gx + rectS / 2, gy + rectS / 2, rectS, rectS);
+      }
+    }
+  }
+  screenRenderBuffer.imageMode(CORNER);
+}
+
+// Тяжелый рендер, вызываемый только ОДИН раз в момент нажатия SAVE
+function saveHighRes() {
+  let highResBuffer = createGraphics(img.width, img.height);
+  let highResBW = img.get();
+  highResBW.filter(GRAY);
+  
+  highResBuffer.clear();
+  highResBuffer.image(highResBW, 0, 0);
+  
+  let currentP = floor(patternIndex);
+  highResBuffer.imageMode(CENTER);
+  
   let origRectS = (rectS / width) * img.width;
   
   for (let gx = 0; gx < img.width; gx += origRectS) {
     for (let gy = 0; gy < img.height; gy += origRectS) {
       
-      // Находим эквивалентную координату в рабочей уменьшенной маске
       let workX = floor(map(gx + origRectS / 2, 0, img.width, 0, workingImg.width));
       let workY = floor(map(gy + origRectS / 2, 0, img.height, 0, workingImg.height));
       
@@ -176,11 +206,17 @@ function renderToBuffer() {
         let screenGridY = floor(map(gy, 0, img.height, 0, height) / rectS);
         let tIdx = (screenGridX % 4) + (screenGridY % 4) * 4;
         
-        mainRenderBuffer.image(tiles[currentP][tIdx], gx + origRectS / 2, gy + origRectS / 2, origRectS, origRectS);
+        highResBuffer.image(tiles[currentP][tIdx], gx + origRectS / 2, gy + origRectS / 2, origRectS, origRectS);
       }
     }
   }
-  mainRenderBuffer.imageMode(CORNER);
+  highResBuffer.imageMode(CORNER);
+  
+  let timestamp = floor(Date.now() / 1000);
+  save(highResBuffer, `render_${timestamp}.png`);
+  
+  // Принудительно удаляем тяжелый объект из памяти
+  highResBuffer.remove();
 }
 
 function mousePressed(event) {
@@ -202,7 +238,6 @@ function touchStarted(event) {
 
 function handleInput(targetX, targetY) {
   if (targetX >= 0 && targetX < width && targetY >= 0 && targetY < height) {
-    // Привязываем координаты клика к размеру рабочей копии workingImg
     let workX = floor(map(targetX, 0, width, 0, workingImg.width));
     let workY = floor(map(targetY, 0, height, 0, workingImg.height));
     
@@ -313,7 +348,7 @@ function windowResized() {
 function applyNewImage(newImg) {
   img = newImg; 
   
-  // Создаем рабочую копию для вычислений маски экрана
+  // Задаем жесткий безопасный лимит для мобильной памяти
   workingImg = img.get();
   if (workingImg.width > MAX_WORKING_SIZE || workingImg.height > MAX_WORKING_SIZE) {
     if (workingImg.width > workingImg.height) {
@@ -345,12 +380,12 @@ function applyNewImage(newImg) {
     canvasElement.style('margin-top', marginTop + 'px');
   }
   
-  mainRenderBuffer = createGraphics(img.width, img.height);
+  // Создаем легкий экранный буфер под размер холста
+  screenRenderBuffer = createGraphics(canvasDisplayWidth, canvasDisplayHeight);
   
   bwImg = img.get();
   bwImg.filter(GRAY);
   
-  // Маска теперь выделяется под безопасный размер рабочей копии
   mask = new Array(workingImg.width * workingImg.height).fill(false);
   isSelected = false; 
   

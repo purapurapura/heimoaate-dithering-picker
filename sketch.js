@@ -3,7 +3,7 @@ let totalShapes = 13;
 let tiles = []; 
 
 let img, bwImg, ditheredBase;
-let rectS = 15;
+let rectS = 15; // Теперь это размер ячейки НА ЭКРАНЕ
 let patternIndex = 0; 
 let threshold = 10;
 let factor = 2; 
@@ -45,7 +45,7 @@ function setup() {
   // Переводим холст в абсолютное позиционирование для точного управления координатами
   cnv.style('position', 'absolute');
   
-  // HTML-контейнер для интерфейса (увеличен в 2 раза: отступы 30px, ширина 270px)
+  // HTML-контейнер для интерфейса
   panelContainer = createDiv('');
   panelContainer.position(30, 30);
   panelContainer.style('background-color', 'rgba(0, 0, 0, 0.85)');
@@ -53,7 +53,7 @@ function setup() {
   panelContainer.style('width', '270px'); 
   panelContainer.style('color', '#fff');
   panelContainer.style('font-family', 'sans-serif');
-  panelContainer.style('font-size', '16px'); // Было 8px
+  panelContainer.style('font-size', '16px'); 
   panelContainer.style('border-radius', '6px');
   panelContainer.style('z-index', '999');
   panelContainer.style('line-height', '1.1');
@@ -62,7 +62,6 @@ function setup() {
   panelContainer.elt.addEventListener('mousedown', (e) => { e.stopPropagation(); });
   panelContainer.elt.addEventListener('touchstart', (e) => { e.stopPropagation(); });
 
-  // Стили для внутренних элементов также увеличены в 2 раза
   let styleSheet = createElement('style', `
     body { background-color: #1a1a1a; margin: 0; padding: 0; overflow: hidden; }
     .mini-panel input[type=range] { height: 20px; margin: 4px 0 12px 0; }
@@ -82,7 +81,8 @@ function setup() {
     return slider;
   }
 
-  sliderSize = createLabeledSlider("SIZE", 4, 30, 15, 1); 
+  // Границы ползунка теперь в экранных пикселях (от 4px до 60px)
+  sliderSize = createLabeledSlider("SIZE", 4, 60, 15, 1); 
   sliderPattern = createLabeledSlider("PATTERN", 0, 12, 0, 1);
   sliderThreshold = createLabeledSlider("THRESHOLD", 1, 255, 10, 1);
   sliderFactor = createLabeledSlider("DITHER FACTOR", 1, 10, 2, 1);
@@ -102,11 +102,11 @@ function setup() {
 
   let btnRow = createDiv('');
   btnRow.parent(panelContainer);
-  btnRow.style('margin', '12px 0'); // Было 6px
+  btnRow.style('margin', '12px 0'); 
 
   btnReset = createButton('RESET');
   btnReset.parent(btnRow);
-  btnReset.style('margin-right', '10px'); // Было 5px
+  btnReset.style('margin-right', '10px'); 
   btnReset.mousePressed(() => { isSelected = false; });
 
   btnSave = createButton('SAVE');
@@ -122,12 +122,12 @@ function setup() {
 
   let menuRow = createDiv('SELECT IMAGE:<br>');
   menuRow.parent(panelContainer);
-  menuRow.style('margin-top', '8px'); // Было 4px
+  menuRow.style('margin-top', '8px'); 
   
   menuImages = createSelect();
   menuImages.parent(menuRow);
   menuImages.style('width', '100%');
-  menuImages.style('margin-top', '4px'); // Было 2px
+  menuImages.style('margin-top', '4px'); 
   
   for (let i = 0; i < defaultImages.length; i++) {
     menuImages.option(defaultImages[i]);
@@ -161,15 +161,27 @@ function renderToBuffer() {
   let currentP = floor(patternIndex);
   mainRenderBuffer.imageMode(CENTER);
   
-  for (let gx = 0; gx < img.width; gx += rectS) {
-    for (let gy = 0; gy < img.height; gy += rectS) {
-      let checkX = floor(gx + rectS / 2);
-      let checkY = floor(gy + rectS / 2);
+  // Вычисляем, сколько оригинальных пикселей картинки приходится на одну экранную ячейку rectS
+  let origRectS = (rectS / width) * img.width;
+  
+  // Цикл идет по оригинальным координатам картинки с динамическим шагом origRectS
+  for (let gx = 0; gx < img.width; gx += origRectS) {
+    for (let gy = 0; gy < img.height; gy += origRectS) {
+      let checkX = floor(gx + origRectS / 2);
+      let checkY = floor(gy + origRectS / 2);
+      
+      checkX = constrain(checkX, 0, img.width - 1);
+      checkY = constrain(checkY, 0, img.height - 1);
+      
       let idx = checkX + checkY * img.width;
       
       if (idx >= 0 && idx < mask.length && mask[idx]) {
-        let tIdx = (floor(gx / rectS) % 4) + (floor(gy / rectS) % 4) * 4;
-        mainRenderBuffer.image(tiles[currentP][tIdx], gx + rectS / 2, gy + rectS / 2, rectS, rectS);
+        // Чтобы паттерн чередовался корректно, берем экранную сетку
+        let screenGridX = floor(map(gx, 0, img.width, 0, width) / rectS);
+        let screenGridY = floor(map(gy, 0, img.height, 0, height) / rectS);
+        let tIdx = (screenGridX % 4) + (screenGridY % 4) * 4;
+        
+        mainRenderBuffer.image(tiles[currentP][tIdx], gx + origRectS / 2, gy + origRectS / 2, origRectS, origRectS);
       }
     }
   }

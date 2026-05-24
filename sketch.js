@@ -185,15 +185,14 @@ function triggerHighResSave() {
   // 1. Рисуем оригинальное цветное фото
   exportCanvas.image(img, 0, 0, exportW, exportH);
   
-  // 2. ХИТРОСТЬ: Аппаратное обесцвечивание!
-  // Это делает картинку идеальным ч/б без использования тяжелого .filter()
-  exportCanvas.blendMode(COLOR);
+  // 2. Аппаратное обесцвечивание через нативный контекст браузера (не крашит память)
+  exportCanvas.drawingContext.globalCompositeOperation = 'color';
   exportCanvas.noStroke();
-  exportCanvas.fill(0); // Накладываем абсолютно черный цвет
-  exportCanvas.rect(0, 0, exportW, exportH); // Режим COLOR заберет всю насыщенность, оставив тени и свет
+  exportCanvas.fill(0); // Накладываем черный цвет, 'color' забирает всю насыщенность
+  exportCanvas.rect(0, 0, exportW, exportH); 
   
-  // 3. Возвращаем обычный режим наложения перед тем, как рисовать цветные паттерны
-  exportCanvas.blendMode(BLEND); 
+  // 3. Обязательно возвращаем обычный режим наложения, чтобы узоры рисовались цветом!
+  exportCanvas.drawingContext.globalCompositeOperation = 'source-over'; 
   
   let currentP = floor(patternIndex);
   exportCanvas.imageMode(CENTER);

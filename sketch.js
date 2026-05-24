@@ -26,9 +26,6 @@ let panelContainer;
 let sliderSize, sliderPattern, sliderThreshold, sliderFactor;
 let btnReset, btnSave, btnUpload, menuImages;
 
-// Флаг, который говорит draw(), нужно ли прямо сейчас рендерить оригинал для сохранения
-let isSavingMode = false; 
-
 function preload() {
   for (let i = 0; i < totalShapes; i++) {
     tiles[i] = [];
@@ -139,25 +136,6 @@ function setup() {
 function draw() {
   background(0);
   
-  if (isSavingMode) {
-    // В этот кадр холст временно переключен на полное разрешение картинки
-    renderFullResolution(this); 
-    isSavingMode = false; // Сбрасываем флаг
-    
-    let timestamp = floor(Date.now() / 1000);
-    save(`render_${timestamp}.png`); // Сохраняем холст напрямую
-    
-    // Возвращаем холст обратно к размерам экрана
-    resizeCanvas(canvasDisplayWidth, canvasDisplayHeight);
-    let canvasElement = select('canvas');
-    if (canvasElement) {
-      canvasElement.style('width', canvasDisplayWidth + 'px');
-      canvasElement.style('height', canvasDisplayHeight + 'px');
-    }
-    return; 
-  }
-  
-  // Обычный экранный цикл рисования
   if (!isSelected) {
     image(ditheredBase, 0, 0, width, height); 
   } else {
@@ -165,7 +143,6 @@ function draw() {
   }
 }
 
-// Отрисовка превью на холсте
 function renderToScreen(target) {
   target.image(bwImg, 0, 0, width, height); 
 
@@ -192,22 +169,37 @@ function renderToScreen(target) {
   target.imageMode(CORNER);
 }
 
-// Отрисовка оригинального разрешения (вызывается на один кадр при сохранении)
-function renderFullResolution(target) {
-  let highResBW = img.get();
-  highResBW.filter(GRAY);
-  target.image(highResBW, 0, 0, img.width, img.height);
+function triggerHighResSave() {
+  // Устанавливаем жесткий, но безопасный лимит разрешения для мобильных браузеров (12 мегапикселей)
+  // Это убережет устройство от вылета по памяти, сохранив безупречную четкость
+  const MAX_EXPORT_PIXELS = 12000000; 
+  let exportW = img.width;
+  let exportH = img.height;
+  
+  if (exportW * exportH > MAX_EXPORT_PIXELS) {
+    let scale = sqrt(MAX_EXPORT_PIXELS / (exportW * exportH));
+    exportW = floor(exportW * scale);
+    exportH = floor(exportH * scale);
+  }
+
+  // Создаем скрытый буфер строго в безопасных границах
+  let exportCanvas = createGraphics(exportW, exportH);
+  
+  // Рисуем исходник прямо на буфер без ресурсоемкого копирования .get()
+  exportCanvas.image(img, 0, 0, exportW, exportH);
+  exportCanvas.filter(GRAY);
   
   let currentP = floor(patternIndex);
-  target.imageMode(CENTER);
+  exportCanvas.imageMode(CENTER);
   
-  let origRectS = (rectS / canvasDisplayWidth) * img.width;
+  // Пропорционально пересчитываем размер шага сетки под экспортный холст
+  let origRectS = (rectS / canvasDisplayWidth) * exportW;
   
-  for (let gx = 0; gx < img.width; gx += origRectS) {
-    for (let gy = 0; gy < img.height; gy += origRectS) {
+  for (let gx = 0; gx < exportW; gx += origRectS) {
+    for (let gy = 0; gy < exportH; gy += origRectS) {
       
-      let workX = floor(map(gx + origRectS / 2, 0, img.width, 0, workingImg.width));
-      let workY = floor(map(gy + origRectS / 2, 0, img.height, 0, workingImg.height));
+      let workX = floor(map(gx + origRectS / 2, 0, exportW, 0, workingImg.width));
+      let workY = floor(map(gy + origRectS / 2, 0, exportH, 0, workingImg.height));
       
       workX = constrain(workX, 0, workingImg.width - 1);
       workY = constrain(workY, 0, workingImg.height - 1);
@@ -215,28 +207,38 @@ function renderFullResolution(target) {
       let idx = workX + workY * workingImg.width;
       
       if (idx >= 0 && idx < mask.length && mask[idx]) {
-        let screenGridX = floor(map(gx, 0, img.width, 0, canvasDisplayWidth) / rectS);
-        let screenGridY = floor(map(gy, 0, img.height, 0, canvasDisplayHeight) / rectS);
+        // Вычисляем сетку на основе экспортной системы координат, привязываясь к оригинальным пропорциям экрана
+        let screenGridX = floor(map(gx, 0, exportW, 0, canvasDisplayWidth) / rectS);
+        let screenGridY = floor(map(gy, 0, exportH, 0, canvasDisplayHeight) / rectS);
         let tIdx = (screenGridX % 4) + (screenGridY % 4) * 4;
         
-        target.image(tiles[currentP][tIdx], gx + origRectS / 2, gy + origRectS / 2, origRectS, origRectS);
+        exportCanvas.image(tiles[currentP][tIdx], gx + origRectS / 2, gy + origRectS / 2, origRectS, origRectS);
       }
     }
   }
-  target.imageMode(CORNER);
-}
-
-// Переключаем холст в режим сохранения
-function triggerHighResSave() {
-  isSavingMode = true;
-  resizeCanvas(img.width, img.height);
   
-  // Прячем системные CSS-растяжения на один кадр
-  let canvasElement = select('canvas');
-  if (canvasElement) {
-    canvasElement.style('width', img.width + 'px');
-    canvasElement.style('height', img.height + 'px');
-  }
+  let timestamp = floor(Date.now() / 1000);
+  let fileName = `render_${timestamp}.png`;
+  
+  // Нативный экспорт через Blob — не ломает DOM-структуру страницы
+  exportCanvas.elt.toBlob(function(blob) {
+    if (blob) {
+      let url = URL.createObjectURL(blob);
+      let a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } else {
+      exportCanvas.save(fileName);
+    }
+    
+    // Мгновенно выгружаем скрытый холст из памяти смартфона
+    exportCanvas.remove();
+  }, 'image/png');
 }
 
 function mousePressed(event) {

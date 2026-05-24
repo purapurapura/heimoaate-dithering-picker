@@ -2,7 +2,7 @@
 let totalShapes = 13;
 let tiles = []; 
 
-let img; // Оригинальное изображение (только для SAVE)
+let img; // Оригинальное изображение (полное разрешение)
 let workingImg; // Рабочая копия для экрана
 let bwImg, ditheredBase;
 let rectS = 15; 
@@ -13,7 +13,6 @@ let selectedColor;
 let isSelected = false;
 let mask = []; 
 
-// Лимит для рабочей копии (гарантирует стабильность на смартфонах)
 const MAX_WORKING_SIZE = 1024; 
 const MAX_DISPLAY_HEIGHT = 800; 
 
@@ -27,8 +26,8 @@ let panelContainer;
 let sliderSize, sliderPattern, sliderThreshold, sliderFactor;
 let btnReset, btnSave, btnUpload, menuImages;
 
-// Быстрый экранный буфер для отрисовки без лагов
-let screenRenderBuffer; 
+// Флаг, который говорит draw(), нужно ли прямо сейчас рендерить оригинал для сохранения
+let isSavingMode = false; 
 
 function preload() {
   for (let i = 0; i < totalShapes; i++) {
@@ -108,7 +107,7 @@ function setup() {
   btnSave = createButton('SAVE');
   btnSave.parent(btnRow);
   btnSave.mousePressed(() => {
-    saveHighRes();
+    triggerHighResSave();
   });
 
   btnUpload = createFileInput(handleFile);
@@ -140,21 +139,38 @@ function setup() {
 function draw() {
   background(0);
   
+  if (isSavingMode) {
+    // В этот кадр холст временно переключен на полное разрешение картинки
+    renderFullResolution(this); 
+    isSavingMode = false; // Сбрасываем флаг
+    
+    let timestamp = floor(Date.now() / 1000);
+    save(`render_${timestamp}.png`); // Сохраняем холст напрямую
+    
+    // Возвращаем холст обратно к размерам экрана
+    resizeCanvas(canvasDisplayWidth, canvasDisplayHeight);
+    let canvasElement = select('canvas');
+    if (canvasElement) {
+      canvasElement.style('width', canvasDisplayWidth + 'px');
+      canvasElement.style('height', canvasDisplayHeight + 'px');
+    }
+    return; 
+  }
+  
+  // Обычный экранный цикл рисования
   if (!isSelected) {
     image(ditheredBase, 0, 0, width, height); 
   } else {
-    renderToScreenBuffer();
-    image(screenRenderBuffer, 0, 0, width, height);
+    renderToScreen(this);
   }
 }
 
-// Быстрый рендер превью для экрана (работает с workingImg)
-function renderToScreenBuffer() {
-  screenRenderBuffer.clear();
-  screenRenderBuffer.image(bwImg, 0, 0, width, height); 
+// Отрисовка превью на холсте
+function renderToScreen(target) {
+  target.image(bwImg, 0, 0, width, height); 
 
   let currentP = floor(patternIndex);
-  screenRenderBuffer.imageMode(CENTER);
+  target.imageMode(CENTER);
   
   for (let gx = 0; gx < width; gx += rectS) {
     for (let gy = 0; gy < height; gy += rectS) {
@@ -169,26 +185,23 @@ function renderToScreenBuffer() {
       
       if (idx >= 0 && idx < mask.length && mask[idx]) {
         let tIdx = (floor(gx / rectS) % 4) + (floor(gy / rectS) % 4) * 4;
-        screenRenderBuffer.image(tiles[currentP][tIdx], gx + rectS / 2, gy + rectS / 2, rectS, rectS);
+        target.image(tiles[currentP][tIdx], gx + rectS / 2, gy + rectS / 2, rectS, rectS);
       }
     }
   }
-  screenRenderBuffer.imageMode(CORNER);
+  target.imageMode(CORNER);
 }
 
-// Тяжелый рендер, вызываемый только ОДИН раз в момент нажатия SAVE
-function saveHighRes() {
-  let highResBuffer = createGraphics(img.width, img.height);
+// Отрисовка оригинального разрешения (вызывается на один кадр при сохранении)
+function renderFullResolution(target) {
   let highResBW = img.get();
   highResBW.filter(GRAY);
-  
-  highResBuffer.clear();
-  highResBuffer.image(highResBW, 0, 0);
+  target.image(highResBW, 0, 0, img.width, img.height);
   
   let currentP = floor(patternIndex);
-  highResBuffer.imageMode(CENTER);
+  target.imageMode(CENTER);
   
-  let origRectS = (rectS / width) * img.width;
+  let origRectS = (rectS / canvasDisplayWidth) * img.width;
   
   for (let gx = 0; gx < img.width; gx += origRectS) {
     for (let gy = 0; gy < img.height; gy += origRectS) {
@@ -202,21 +215,28 @@ function saveHighRes() {
       let idx = workX + workY * workingImg.width;
       
       if (idx >= 0 && idx < mask.length && mask[idx]) {
-        let screenGridX = floor(map(gx, 0, img.width, 0, width) / rectS);
-        let screenGridY = floor(map(gy, 0, img.height, 0, height) / rectS);
+        let screenGridX = floor(map(gx, 0, img.width, 0, canvasDisplayWidth) / rectS);
+        let screenGridY = floor(map(gy, 0, img.height, 0, canvasDisplayHeight) / rectS);
         let tIdx = (screenGridX % 4) + (screenGridY % 4) * 4;
         
-        highResBuffer.image(tiles[currentP][tIdx], gx + origRectS / 2, gy + origRectS / 2, origRectS, origRectS);
+        target.image(tiles[currentP][tIdx], gx + origRectS / 2, gy + origRectS / 2, origRectS, origRectS);
       }
     }
   }
-  highResBuffer.imageMode(CORNER);
+  target.imageMode(CORNER);
+}
+
+// Переключаем холст в режим сохранения
+function triggerHighResSave() {
+  isSavingMode = true;
+  resizeCanvas(img.width, img.height);
   
-  let timestamp = floor(Date.now() / 1000);
-  save(highResBuffer, `render_${timestamp}.png`);
-  
-  // Принудительно удаляем тяжелый объект из памяти
-  highResBuffer.remove();
+  // Прячем системные CSS-растяжения на один кадр
+  let canvasElement = select('canvas');
+  if (canvasElement) {
+    canvasElement.style('width', img.width + 'px');
+    canvasElement.style('height', img.height + 'px');
+  }
 }
 
 function mousePressed(event) {
@@ -348,7 +368,6 @@ function windowResized() {
 function applyNewImage(newImg) {
   img = newImg; 
   
-  // Задаем жесткий безопасный лимит для мобильной памяти
   workingImg = img.get();
   if (workingImg.width > MAX_WORKING_SIZE || workingImg.height > MAX_WORKING_SIZE) {
     if (workingImg.width > workingImg.height) {
@@ -378,12 +397,11 @@ function applyNewImage(newImg) {
   if (canvasElement) {
     canvasElement.style('margin-left', marginLeft + 'px');
     canvasElement.style('margin-top', marginTop + 'px');
+    canvasElement.style('width', canvasDisplayWidth + 'px');
+    canvasElement.style('height', canvasDisplayHeight + 'px');
   }
   
-  // Создаем легкий экранный буфер под размер холста
-  screenRenderBuffer = createGraphics(canvasDisplayWidth, canvasDisplayHeight);
-  
-  bwImg = img.get();
+  bwImg = workingImg.get();
   bwImg.filter(GRAY);
   
   mask = new Array(workingImg.width * workingImg.height).fill(false);

@@ -40,45 +40,162 @@ function setup() {
   let cnv = createCanvas(100, 100);
   cnv.style('position', 'absolute');
   
+  // Создаем контейнер меню
   panelContainer = createDiv('');
-  panelContainer.position(30, 30);
-  panelContainer.style('background-color', 'rgba(0, 0, 0, 0.85)');
-  panelContainer.style('padding', '16px'); 
-  panelContainer.style('width', '270px'); 
-  panelContainer.style('color', '#fff');
-  panelContainer.style('font-family', 'sans-serif');
-  panelContainer.style('font-size', '16px'); 
-  panelContainer.style('border-radius', '6px');
-  panelContainer.style('z-index', '999');
-  panelContainer.style('line-height', '1.1');
+  panelContainer.addClass('bottom-panel');
 
+  // Блокируем клики и тапы по меню, чтобы они не рисовали на холсте под ним
   panelContainer.elt.addEventListener('mousedown', (e) => { e.stopPropagation(); });
   panelContainer.elt.addEventListener('touchstart', (e) => { e.stopPropagation(); });
 
+  // Внедряем CSS для адаптивного нижнего меню
   let styleSheet = createElement('style', `
     body { background-color: #1a1a1a; margin: 0; padding: 0; overflow: hidden; }
-    .mini-panel input[type=range] { height: 20px; margin: 4px 0 12px 0; }
-    .mini-panel button { font-size: 16px; padding: 4px 10px; background: #444; color: #FFFFFF; border: none; border-radius: 4px; cursor: pointer; }
-    .mini-panel button:hover { background: #666; }
-    .mini-panel select { font-size: 16px; padding: 2px; background: #333; color: #fff; border: 1px solid #555; }
-    .mini-panel input[type=file] { font-size: 14px; max-width: 100%; color: #aaa; margin-bottom: 12px; }
-  `);
-  panelContainer.addClass('mini-panel');
+    
+    .bottom-panel {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: rgba(0, 0, 0, 0.85);
+      padding: 16px;
+      border-radius: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      width: 95%;
+      max-width: 800px;
+      justify-content: space-between;
+      align-items: stretch;
+      color: #fff;
+      font-family: sans-serif;
+      z-index: 999;
+      box-sizing: border-box;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
 
-  function createLabeledSlider(label, min, max, value, step) {
-    let panelRow = createDiv(label + ': ');
-    panelRow.parent(panelContainer);
+    .control-col {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 12px;
+      flex: 1;
+      min-width: 140px;
+    }
+
+    .slider-row {
+      display: flex;
+      flex-direction: column;
+      font-size: 11px;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+      color: #ccc;
+    }
+
+    .slider-row input[type=range] {
+      margin: 8px 0 0 0;
+      height: 24px; /* Удобная высота для пальца */
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .bottom-panel button {
+      flex: 1;
+      font-size: 14px;
+      font-weight: bold;
+      padding: 10px;
+      background: #444;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .bottom-panel button:hover { background: #666; }
+
+    .bottom-panel select {
+      font-size: 14px;
+      padding: 8px;
+      background: #333;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 8px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .custom-file-upload {
+      font-size: 12px;
+      color: #aaa;
+      width: 100%;
+    }
+  `);
+
+  // Функция создания ползунков с привязкой к родителю
+  function createLabeledSlider(parent, label, min, max, value, step) {
+    let wrapper = createDiv(label);
+    wrapper.addClass('slider-row');
+    wrapper.parent(parent);
     let slider = createSlider(min, max, value, step);
-    slider.parent(panelRow);
+    slider.parent(wrapper);
     slider.style('width', '100%');
     return slider;
   }
 
-  sliderSize = createLabeledSlider("SIZE", 4, 60, 15, 1); 
-  sliderPattern = createLabeledSlider("PATTERN", 0, 12, 0, 1);
-  sliderThreshold = createLabeledSlider("THRESHOLD", 1, 255, 10, 1);
-  sliderFactor = createLabeledSlider("DITHER FACTOR", 1, 10, 2, 1);
+  // Создаем 3 колонки (в ряд)
+  let col1 = createDiv('');
+  col1.addClass('control-col');
+  col1.parent(panelContainer);
   
+  let col2 = createDiv('');
+  col2.addClass('control-col');
+  col2.parent(panelContainer);
+  
+  let col3 = createDiv('');
+  col3.addClass('control-col');
+  col3.parent(panelContainer);
+
+  // --- КОЛОНКА 1 (по 2 ползунка в один столбик) ---
+  sliderSize = createLabeledSlider(col1, "SIZE", 4, 60, 15, 1); 
+  sliderPattern = createLabeledSlider(col1, "PATTERN", 0, 12, 0, 1);
+  
+  // --- КОЛОНКА 2 (по 2 ползунка в один столбик) ---
+  sliderThreshold = createLabeledSlider(col2, "THRESHOLD", 1, 255, 10, 1);
+  sliderFactor = createLabeledSlider(col2, "DITHER FACTOR", 1, 10, 2, 1);
+  
+  // --- КОЛОНКА 3 (Селект, Кнопки, Загрузка файла) ---
+  menuImages = createSelect();
+  menuImages.parent(col3);
+  for (let i = 0; i < defaultImages.length; i++) {
+    menuImages.option(defaultImages[i]);
+  }
+  menuImages.changed(handleMenuChange);
+
+  let btnRow = createDiv('');
+  btnRow.addClass('btn-row');
+  btnRow.parent(col3);
+  
+  btnReset = createButton('RESET');
+  btnReset.parent(btnRow);
+  btnReset.mousePressed(() => { isSelected = false; });
+
+  btnSave = createButton('SAVE');
+  btnSave.parent(btnRow);
+  btnSave.mousePressed(() => { triggerHighResSave(); });
+
+  let uploadWrapper = createDiv('');
+  uploadWrapper.addClass('custom-file-upload');
+  uploadWrapper.parent(col3);
+  btnUpload = createFileInput(handleFile);
+  btnUpload.parent(uploadWrapper);
+  btnUpload.style('width', '100%');
+
+  // Привязка событий ползунков
   sliderSize.input(() => { rectS = sliderSize.value(); });
   sliderPattern.input(() => { patternIndex = sliderPattern.value(); });
   
@@ -92,40 +209,7 @@ function setup() {
     updateDitherBase();
   });
 
-  let btnRow = createDiv('');
-  btnRow.parent(panelContainer);
-  btnRow.style('margin', '12px 0'); 
-
-  btnReset = createButton('RESET');
-  btnReset.parent(btnRow);
-  btnReset.style('margin-right', '10px'); 
-  btnReset.mousePressed(() => { isSelected = false; });
-
-  btnSave = createButton('SAVE');
-  btnSave.parent(btnRow);
-  btnSave.mousePressed(() => {
-    triggerHighResSave();
-  });
-
-  btnUpload = createFileInput(handleFile);
-  btnUpload.parent(panelContainer);
-
-  let menuRow = createDiv('SELECT IMAGE:<br>');
-  menuRow.parent(panelContainer);
-  menuRow.style('margin-top', '8px'); 
-  
-  menuImages = createSelect();
-  menuImages.parent(menuRow);
-  menuImages.style('width', '100%');
-  menuImages.style('margin-top', '4px'); 
-  
-  for (let i = 0; i < defaultImages.length; i++) {
-    menuImages.option(defaultImages[i]);
-  }
-  menuImages.changed(handleMenuChange);
-
   selectedColor = color(255);
-  
   rectS = sliderSize.value();
   patternIndex = sliderPattern.value();
   threshold = sliderThreshold.value();
@@ -182,16 +266,13 @@ function triggerHighResSave() {
 
   let exportCanvas = createGraphics(exportW, exportH);
   
-  // 1. Рисуем оригинальное цветное фото
   exportCanvas.image(img, 0, 0, exportW, exportH);
   
-  // 2. Аппаратное обесцвечивание через нативный контекст браузера (не крашит память)
   exportCanvas.drawingContext.globalCompositeOperation = 'color';
   exportCanvas.noStroke();
-  exportCanvas.fill(0); // Накладываем черный цвет, 'color' забирает всю насыщенность
+  exportCanvas.fill(0); 
   exportCanvas.rect(0, 0, exportW, exportH); 
   
-  // 3. Обязательно возвращаем обычный режим наложения, чтобы узоры рисовались цветом!
   exportCanvas.drawingContext.globalCompositeOperation = 'source-over'; 
   
   let currentP = floor(patternIndex);
@@ -387,7 +468,7 @@ function applyNewImage(newImg) {
   let imgRatio = img.width / img.height;
   canvasDisplayHeight = MAX_DISPLAY_HEIGHT;
   
-  let maxAvailableWidth = windowWidth - 190; 
+  let maxAvailableWidth = windowWidth; 
   canvasDisplayWidth = Math.floor(MAX_DISPLAY_HEIGHT * imgRatio);
   
   if (canvasDisplayWidth > maxAvailableWidth) {

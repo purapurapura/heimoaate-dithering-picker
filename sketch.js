@@ -37,41 +37,41 @@ function setup() {
   let cnv = createCanvas(100, 100);
   cnv.style('display', 'block');
   
-  // Добавляем стили через создание тега в head
   let css = `
-    body { background-color: #1a1a1a; margin: 0; padding: 0; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
+    body { background-color: #1a1a1a; margin: 0; padding: 0; overflow: hidden; }
     .bottom-panel {
       position: fixed;
       bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
       background-color: rgba(0, 0, 0, 0.85);
       padding: 15px;
       border-radius: 12px;
       display: flex;
-      flex-wrap: wrap;
-      gap: 15px;
+      flex-direction: row;
+      gap: 20px;
       z-index: 999;
       backdrop-filter: blur(8px);
       box-shadow: 0 5px 20px rgba(0,0,0,0.5);
-      max-width: 90%;
-      width: auto;
+      white-space: nowrap;
+      align-items: flex-start;
     }
     .control-col { display: flex; flex-direction: column; gap: 8px; min-width: 120px; }
-    .slider-row { color: #aaa; font-size: 10px; font-weight: bold; display: flex; flex-direction: column; }
-    .slider-row input { margin-top: 5px; }
+    .slider-row { color: #ccc; font-size: 10px; font-weight: bold; display: flex; flex-direction: column; }
+    .slider-row input { margin-top: 5px; width: 100%; cursor: pointer; }
     .btn-row { display: flex; gap: 5px; margin-top: 5px; }
-    .bottom-panel button { padding: 8px; background: #333; color: #fff; border: none; border-radius: 6px; cursor: pointer; flex: 1; }
-    .bottom-panel select { padding: 6px; background: #222; color: #fff; border: 1px solid #444; border-radius: 6px; }
+    .bottom-panel button { padding: 8px; background: #444; color: #fff; border: none; border-radius: 6px; cursor: pointer; flex: 1; font-weight: bold; }
+    .bottom-panel select { padding: 6px; background: #222; color: #fff; border: 1px solid #555; border-radius: 6px; width: 100%; }
+    input[type=file] { color: #777; font-size: 10px; margin-top: 5px; width: 100%; }
   `;
   let style = document.createElement('style');
   style.appendChild(document.createTextNode(css));
   document.head.appendChild(style);
 
-  panelContainer = createDiv('');
-  panelContainer.addClass('bottom-panel');
+  panelContainer = createDiv('').addClass('bottom-panel');
   panelContainer.elt.addEventListener('mousedown', (e) => e.stopPropagation());
   panelContainer.elt.addEventListener('touchstart', (e) => e.stopPropagation());
 
-  // Создаем интерфейс
   let col1 = createDiv('').addClass('control-col').parent(panelContainer);
   let col2 = createDiv('').addClass('control-col').parent(panelContainer);
   let col3 = createDiv('').addClass('control-col').parent(panelContainer);
@@ -88,10 +88,8 @@ function setup() {
   let btnRow = createDiv('').addClass('btn-row').parent(col3);
   createButton('RESET').parent(btnRow).mousePressed(() => isSelected = false);
   createButton('SAVE').parent(btnRow).mousePressed(triggerHighResSave);
-  
   btnUpload = createFileInput(handleFile).parent(col3);
 
-  // Привязка событий
   sliderSize.input(() => rectS = sliderSize.value());
   sliderPattern.input(() => patternIndex = sliderPattern.value());
   sliderThreshold.input(() => { threshold = sliderThreshold.value(); if (isSelected) updateMask(); });
@@ -129,19 +127,15 @@ function triggerHighResSave() {
   exportCanvas.fill(0);
   exportCanvas.rect(0, 0, img.width, img.height);
   exportCanvas.drawingContext.globalCompositeOperation = 'source-over';
-  
   let currentP = floor(patternIndex);
   exportCanvas.imageMode(CENTER);
   let scale = img.width / canvasDisplayWidth;
   let s = rectS * scale;
-  
   for (let gx = 0; gx < img.width; gx += s) {
     for (let gy = 0; gy < img.height; gy += s) {
       let wx = floor(map(gx + s/2, 0, img.width, 0, workingImg.width));
       let wy = floor(map(gy + s/2, 0, img.height, 0, workingImg.height));
-      if (mask[wx + wy * workingImg.width]) {
-        exportCanvas.image(tiles[currentP][(floor(gx/s)%4) + (floor(gy/s)%4)*4], gx + s/2, gy + s/2, s, s);
-      }
+      if (mask[wx + wy * workingImg.width]) exportCanvas.image(tiles[currentP][(floor(gx/s)%4) + (floor(gy/s)%4)*4], gx + s/2, gy + s/2, s, s);
     }
   }
   exportCanvas.save(`render_${floor(Date.now()/1000)}.png`);
@@ -210,12 +204,10 @@ function applyNewImage(newImg) {
   img = newImg;
   workingImg = img.get();
   if (max(workingImg.width, workingImg.height) > MAX_WORKING_SIZE) workingImg.resize(MAX_WORKING_SIZE, 0);
-  
   let ratio = img.width / img.height;
-  canvasDisplayHeight = min(MAX_DISPLAY_HEIGHT, windowHeight - 150);
+  canvasDisplayHeight = min(MAX_DISPLAY_HEIGHT, windowHeight - 180);
   canvasDisplayWidth = canvasDisplayHeight * ratio;
   if (canvasDisplayWidth > windowWidth - 40) { canvasDisplayWidth = windowWidth - 40; canvasDisplayHeight = canvasDisplayWidth / ratio; }
-  
   resizeCanvas(canvasDisplayWidth, canvasDisplayHeight);
   bwImg = workingImg.get(); bwImg.filter(GRAY);
   mask = new Array(workingImg.width * workingImg.height).fill(false);

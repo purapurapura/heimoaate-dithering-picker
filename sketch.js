@@ -11,7 +11,7 @@ let selectedColor;
 let isSelected = false;
 let mask = []; 
 
-// Настройка максимальной высоты окна НА ЭКРАНЕ
+// Настройка maximalной высоты окна НА ЭКРАНЕ
 const MAX_DISPLAY_HEIGHT = 800; 
 
 // Текущие экранные размеры холста (для draw и mouse)
@@ -59,7 +59,7 @@ function setup() {
   panelContainer.style('z-index', '999');
   panelContainer.style('line-height', '1.1');
 
-  // Защита от кликов сквозь меню
+  // Защита от кликов и тачей сквозь меню
   panelContainer.elt.addEventListener('mousedown', (e) => { e.stopPropagation(); });
   panelContainer.elt.addEventListener('touchstart', (e) => { e.stopPropagation(); });
 
@@ -177,15 +177,27 @@ function renderToBuffer() {
 }
 
 function mousePressed() {
-  // Поскольку холст смещен, p5.js автоматически корректирует mouseX и mouseY 
-  // относительно левого верхнего угла холста, а не экрана.
-  if (mouseX >= 0 && mouseX < width && mouseY >= 0 && mouseY < height) {
-    let origX = floor(map(mouseX, 0, width, 0, img.width));
-    let origY = floor(map(mouseY, 0, height, 0, img.height));
+  let targetX = mouseX;
+  let targetY = mouseY;
+
+  // Универсальный перехват: если это тачскрин смартфона, берем координаты пальца
+  if (touches && touches.length > 0) {
+    // Вычитаем CSS-сдвиг холста (margin-left: 165px, margin-top: 15px)
+    targetX = touches[0].x - 165;
+    targetY = touches[0].y - 15;
+  }
+
+  // Проверяем попадание клика/тача точно в границы холста
+  if (targetX >= 0 && targetX < width && targetY >= 0 && targetY < height) {
+    let origX = floor(map(targetX, 0, width, 0, img.width));
+    let origY = floor(map(targetY, 0, height, 0, img.height));
     
     selectedColor = ditheredBase.get(origX, origY);
     updateMask(); 
     isSelected = true;
+    
+    // Предотвращает нежелательный скролл или зум страницы на мобильных устройствах
+    return false;
   }
 }
 

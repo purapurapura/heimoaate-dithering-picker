@@ -2,8 +2,8 @@
 let totalShapes = 13;
 let tiles = []; 
 
-let img; // Оригинальное изображение (полное разрешение)
-let workingImg; // Рабочая копия для экрана
+let img; 
+let workingImg; 
 let bwImg, ditheredBase;
 let rectS = 15; 
 let patternIndex = 0; 
@@ -170,8 +170,6 @@ function renderToScreen(target) {
 }
 
 function triggerHighResSave() {
-  // Безопасный мобильный лимит в 4 Мп (примерно 2000х2000px).
-  // Сохраняет отличную детализацию узоров без краша страницы.
   const MAX_EXPORT_PIXELS = 4000000; 
   let exportW = img.width;
   let exportH = img.height;
@@ -184,9 +182,18 @@ function triggerHighResSave() {
 
   let exportCanvas = createGraphics(exportW, exportH);
   
-  // Рисуем оригинал на скрытый холст и превращаем его в ч/б
+  // 1. Рисуем оригинальное цветное фото
   exportCanvas.image(img, 0, 0, exportW, exportH);
-  exportCanvas.filter(GRAY); 
+  
+  // 2. ХИТРОСТЬ: Аппаратное обесцвечивание!
+  // Это делает картинку идеальным ч/б без использования тяжелого .filter()
+  exportCanvas.blendMode(COLOR);
+  exportCanvas.noStroke();
+  exportCanvas.fill(0); // Накладываем абсолютно черный цвет
+  exportCanvas.rect(0, 0, exportW, exportH); // Режим COLOR заберет всю насыщенность, оставив тени и свет
+  
+  // 3. Возвращаем обычный режим наложения перед тем, как рисовать цветные паттерны
+  exportCanvas.blendMode(BLEND); 
   
   let currentP = floor(patternIndex);
   exportCanvas.imageMode(CENTER);
@@ -217,7 +224,6 @@ function triggerHighResSave() {
   let timestamp = floor(Date.now() / 1000);
   let fileName = `render_${timestamp}.png`;
   
-  // Асинхронная генерация Blob-объекта, чтобы браузер успел распределить ресурсы
   setTimeout(() => {
     exportCanvas.elt.toBlob(function(blob) {
       if (blob) {
@@ -228,7 +234,6 @@ function triggerHighResSave() {
         document.body.appendChild(a);
         a.click();
         
-        // Системная задержка перед полной очисткой DOM и памяти
         setTimeout(() => {
           document.body.removeChild(a);
           URL.revokeObjectURL(url);

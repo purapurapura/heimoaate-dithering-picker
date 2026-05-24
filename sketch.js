@@ -58,28 +58,37 @@ function setup() {
       left: 50%;
       transform: translateX(-50%);
       background-color: rgba(0, 0, 0, 0.85);
-      padding: 16px;
-      border-radius: 16px;
+      padding: 12px;
+      border-radius: 12px;
       display: flex;
       flex-wrap: wrap;
-      gap: 16px;
+      gap: 12px;
+      /* Адаптивная ширина: на мобильных 95%, на десктопе подстраивается под канвас */
       width: 95%;
       max-width: 800px;
       justify-content: space-between;
-      align-items: stretch;
       color: #fff;
       font-family: sans-serif;
       z-index: 999;
-      box-sizing: border-box;
       backdrop-filter: blur(8px);
-      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+    }
+
+    /* На больших экранах делаем меню компактнее */
+    @media (min-width: 1024px) {
+      .bottom-panel {
+        padding: 8px;
+        gap: 8px;
+        width: auto; /* Сжимается до размера контента */
+        min-width: 600px;
+      }
+      .control-col { min-width: 120px !important; }
     }
 
     .control-col {
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
-      gap: 12px;
+      gap: 8px;
       flex: 1;
       min-width: 140px;
     }
@@ -87,51 +96,36 @@ function setup() {
     .slider-row {
       display: flex;
       flex-direction: column;
-      font-size: 11px;
+      font-size: 10px;
       font-weight: bold;
-      letter-spacing: 0.5px;
-      color: #ccc;
+      color: #aaa;
     }
 
     .slider-row input[type=range] {
-      margin: 8px 0 0 0;
-      height: 24px; /* Удобная высота для пальца */
+      margin: 4px 0 0 0;
+      height: 20px;
     }
 
-    .btn-row {
-      display: flex;
-      gap: 8px;
-    }
+    .btn-row { display: flex; gap: 6px; }
 
     .bottom-panel button {
       flex: 1;
-      font-size: 14px;
-      font-weight: bold;
-      padding: 10px;
-      background: #444;
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    .bottom-panel button:hover { background: #666; }
-
-    .bottom-panel select {
-      font-size: 14px;
+      font-size: 12px;
       padding: 8px;
       background: #333;
       color: #fff;
-      border: 1px solid #555;
-      border-radius: 8px;
-      width: 100%;
-      box-sizing: border-box;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
     }
 
-    .custom-file-upload {
+    .bottom-panel select {
       font-size: 12px;
-      color: #aaa;
+      padding: 6px;
+      background: #222;
+      color: #fff;
+      border: 1px solid #444;
+      border-radius: 6px;
       width: 100%;
     }
   `);

@@ -42,9 +42,8 @@ function setup() {
   // Создаем базовый холст
   let cnv = createCanvas(100, 100);
   
-  // Сдвигаем сам холст на экране вправо на ширину меню + отступы (135px + 30px = 165px)
-  cnv.style('margin-left', '165px');
-  cnv.style('margin-top', '15px');
+  // Переводим холст в абсолютное позиционирование для точного управления координатами
+  cnv.style('position', 'absolute');
   
   // HTML-контейнер для интерфейса (закреплен жестко слева в углу)
   panelContainer = createDiv('');
@@ -64,7 +63,7 @@ function setup() {
   panelContainer.elt.addEventListener('touchstart', (e) => { e.stopPropagation(); });
 
   let styleSheet = createElement('style', `
-    body { background-color: #1a1a1a; margin: 0; padding: 0; }
+    body { background-color: #1a1a1a; margin: 0; padding: 0; overflow: hidden; }
     .mini-panel input[type=range] { height: 10px; margin: 2px 0 6px 0; }
     .mini-panel button { font-size: 8px; padding: 2px 5px; background: #444; color: #FFFFFF; border: none; border-radius: 2px; cursor: pointer; }
     .mini-panel button:hover { background: #666; }
@@ -178,7 +177,6 @@ function renderToBuffer() {
 
 // Обработка клика мыши
 function mousePressed(event) {
-  // Игнорируем тачи (чтобы не было дубля) и клики мимо холста (по меню)
   if (touches.length > 0) return; 
   if (event && event.target && event.target.tagName.toLowerCase() !== 'canvas') return;
 
@@ -187,15 +185,13 @@ function mousePressed(event) {
 
 // Обработка мобильного тача
 function touchStarted(event) {
-  // Если тапнули по нашему меню (слайдерам, кнопкам), разрешаем им работать
   if (event && event.target && event.target.tagName.toLowerCase() !== 'canvas') return;
   
   if (touches && touches.length > 0) {
-    // Больше ничего не вычитаем — p5.js сам отдает координаты внутри холста!
     handleInput(touches[0].x, touches[0].y);
   }
   
-  return false; // Блокируем скролл страницы только при таппе по самому холсту
+  return false; 
 }
 
 // Единый алгоритм расчета маски
@@ -204,7 +200,6 @@ function handleInput(targetX, targetY) {
     let origX = floor(map(targetX, 0, width, 0, img.width));
     let origY = floor(map(targetY, 0, height, 0, img.height));
     
-    // Подстраховка от выхода за границы картинки
     origX = constrain(origX, 0, img.width - 1);
     origY = constrain(origY, 0, img.height - 1);
     
@@ -305,6 +300,10 @@ function handleMenuChange() {
   });
 }
 
+function windowResized() {
+  applyNewImage(img);
+}
+
 function applyNewImage(newImg) {
   img = newImg; 
   
@@ -320,6 +319,17 @@ function applyNewImage(newImg) {
   }
   
   resizeCanvas(canvasDisplayWidth, canvasDisplayHeight);
+  
+  // Рассчитываем маргины для идеального выравнивания по центру всего экрана
+  let marginLeft = Math.floor((windowWidth - canvasDisplayWidth) / 2);
+  let marginTop = Math.floor((windowHeight - canvasDisplayHeight) / 2);
+  
+  // Принудительно выставляем координаты холсту
+  let canvasElement = select('canvas');
+  if (canvasElement) {
+    canvasElement.style('margin-left', marginLeft + 'px');
+    canvasElement.style('margin-top', marginTop + 'px');
+  }
   
   mainRenderBuffer = createGraphics(img.width, img.height);
   

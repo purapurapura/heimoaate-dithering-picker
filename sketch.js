@@ -170,8 +170,8 @@ function renderToScreen(target) {
 }
 
 function triggerHighResSave() {
-  // Железобетонный мобильный лимит в 4 Мп (около 2000х2000px).
-  // Это сохраняет высокую детализацию узоров, но вкладка гарантированно не падает.
+  // Безопасный мобильный лимит в 4 Мп (примерно 2000х2000px).
+  // Сохраняет отличную детализацию узоров без краша страницы.
   const MAX_EXPORT_PIXELS = 4000000; 
   let exportW = img.width;
   let exportH = img.height;
@@ -184,11 +184,9 @@ function triggerHighResSave() {
 
   let exportCanvas = createGraphics(exportW, exportH);
   
-  // Переносим обработку цвета на видеокарту через контекст отрисовщика.
-  // Заменяет ресурсоемкий метод .filter(GRAY) из p5.js, сохраняя оперативку.
-  exportCanvas.drawingContext.filter = 'grayscale(100%)';
+  // Рисуем оригинал на скрытый холст и превращаем его в ч/б
   exportCanvas.image(img, 0, 0, exportW, exportH);
-  exportCanvas.drawingContext.filter = 'none'; 
+  exportCanvas.filter(GRAY); 
   
   let currentP = floor(patternIndex);
   exportCanvas.imageMode(CENTER);
@@ -219,7 +217,7 @@ function triggerHighResSave() {
   let timestamp = floor(Date.now() / 1000);
   let fileName = `render_${timestamp}.png`;
   
-  // Добавляем микро-паузу перед сборкой Blob, давая браузеру распределить ресурсы
+  // Асинхронная генерация Blob-объекта, чтобы браузер успел распределить ресурсы
   setTimeout(() => {
     exportCanvas.elt.toBlob(function(blob) {
       if (blob) {
@@ -230,7 +228,7 @@ function triggerHighResSave() {
         document.body.appendChild(a);
         a.click();
         
-        // Даем браузеру системную задержку на подхват скачивания, затем чистим DOM и буфер
+        // Системная задержка перед полной очисткой DOM и памяти
         setTimeout(() => {
           document.body.removeChild(a);
           URL.revokeObjectURL(url);

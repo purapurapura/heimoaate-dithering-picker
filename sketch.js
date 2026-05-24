@@ -1,7 +1,10 @@
 // noprotect
 let totalShapes = 13;
 let tiles = []; 
-let img, workingImg, bwImg, ditheredBase;
+
+let img; 
+let workingImg; 
+let bwImg, ditheredBase;
 let rectS = 15; 
 let patternIndex = 0; 
 let threshold = 10;
@@ -11,6 +14,17 @@ let isSelected = false;
 let mask = []; 
 
 const MAX_WORKING_SIZE = 1024; 
+const MAX_DISPLAY_HEIGHT = 800; 
+
+let canvasDisplayWidth = 100;
+let canvasDisplayHeight = 100;
+
+let baseNames = ["komi", "nenets", "inkeri", "mari", "erzya_moksha", "udmurt", "magyar", "suomi", "eesti", "lappi", "khanty_mansi", "selkup", "nganasan"];
+let defaultImages = ["mask.png", "hugo.jpg", "manypupuner.jpg", "me.jpeg"];
+
+let panelContainer;
+let sliderSize, sliderPattern, sliderThreshold, sliderFactor;
+let btnReset, btnSave, btnUpload, menuImages;
 
 function preload() {
   for (let i = 0; i < totalShapes; i++) {
@@ -23,89 +37,132 @@ function preload() {
 }
 
 function setup() {
-  // Убираем position: absolute, пусть меню и холст живут в одном потоке
   let cnv = createCanvas(100, 100);
+  cnv.style('position', 'absolute');
   
-  // Создаем контейнер для всего, чтобы центрировать
-  let container = createDiv('');
-  container.style('display', 'flex');
-  container.style('flex-direction', 'column');
-  container.style('align-items', 'center');
-  container.style('padding-bottom', '20px');
+  panelContainer = createDiv('');
+  panelContainer.position(30, 30);
+  panelContainer.style('background-color', 'rgba(0, 0, 0, 0.85)');
+  panelContainer.style('padding', '16px'); 
+  panelContainer.style('width', '270px'); 
+  panelContainer.style('color', '#fff');
+  panelContainer.style('font-family', 'sans-serif');
+  panelContainer.style('font-size', '16px'); 
+  panelContainer.style('border-radius', '6px');
+  panelContainer.style('z-index', '999');
+  panelContainer.style('line-height', '1.1');
+
+  panelContainer.elt.addEventListener('mousedown', (e) => { e.stopPropagation(); });
+  panelContainer.elt.addEventListener('touchstart', (e) => { e.stopPropagation(); });
+
+  let styleSheet = createElement('style', `
+    body { background-color: #1a1a1a; margin: 0; padding: 0; overflow: hidden; }
+    .mini-panel input[type=range] { height: 20px; margin: 4px 0 12px 0; }
+    .mini-panel button { font-size: 16px; padding: 4px 10px; background: #444; color: #FFFFFF; border: none; border-radius: 4px; cursor: pointer; }
+    .mini-panel button:hover { background: #666; }
+    .mini-panel select { font-size: 16px; padding: 2px; background: #333; color: #fff; border: 1px solid #555; }
+    .mini-panel input[type=file] { font-size: 14px; max-width: 100%; color: #aaa; margin-bottom: 12px; }
+  `);
+  panelContainer.addClass('mini-panel');
+
+  function createLabeledSlider(label, min, max, value, step) {
+    let panelRow = createDiv(label + ': ');
+    panelRow.parent(panelContainer);
+    let slider = createSlider(min, max, value, step);
+    slider.parent(panelRow);
+    slider.style('width', '100%');
+    return slider;
+  }
+
+  sliderSize = createLabeledSlider("SIZE", 4, 60, 15, 1); 
+  sliderPattern = createLabeledSlider("PATTERN", 0, 12, 0, 1);
+  sliderThreshold = createLabeledSlider("THRESHOLD", 1, 255, 10, 1);
+  sliderFactor = createLabeledSlider("DITHER FACTOR", 1, 10, 2, 1);
   
-  cnv.parent(container);
+  sliderSize.input(() => { rectS = sliderSize.value(); });
+  sliderPattern.input(() => { patternIndex = sliderPattern.value(); });
+  
+  sliderThreshold.input(() => {
+    threshold = sliderThreshold.value();
+    if (isSelected) updateMask(); 
+  });
 
-  // Стили меню: жесткие размеры в PX, никаких процентов
-  let css = `
-    body { background-color: #1a1a1a; margin: 0; padding: 20px; }
-    .bottom-panel {
-      width: 600px;
-      margin-top: 20px;
-      background-color: #000;
-      padding: 20px;
-      border-radius: 12px;
-      display: flex;
-      flex-direction: row;
-      gap: 20px;
-      box-shadow: 0 5px 20px rgba(0,0,0,0.5);
-    }
-    @media (max-width: 650px) {
-      .bottom-panel { width: 90%; flex-wrap: wrap; }
-    }
-    .control-col { display: flex; flex-direction: column; gap: 10px; flex: 1; }
-    .slider-row { color: #fff; font-size: 12px; font-weight: bold; }
-    input[type=range] { width: 100%; margin-top: 8px; height: 30px; }
-    button { padding: 12px; background: #333; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
-    select { padding: 10px; background: #222; color: #fff; border: 1px solid #444; border-radius: 6px; width: 100%; }
-  `;
-  let style = document.createElement('style');
-  style.appendChild(document.createTextNode(css));
-  document.head.appendChild(style);
+  sliderFactor.input(() => {
+    factor = sliderFactor.value();
+    updateDitherBase();
+  });
 
-  let panel = createDiv('').addClass('bottom-panel').parent(container);
+  let btnRow = createDiv('');
+  btnRow.parent(panelContainer);
+  btnRow.style('margin', '12px 0'); 
 
-  let col1 = createDiv('').addClass('control-col').parent(panel);
-  let col2 = createDiv('').addClass('control-col').parent(panel);
-  let col3 = createDiv('').addClass('control-col').parent(panel);
+  btnReset = createButton('RESET');
+  btnReset.parent(btnRow);
+  btnReset.style('margin-right', '10px'); 
+  btnReset.mousePressed(() => { isSelected = false; });
 
-  sliderSize = createSlider(4, 60, 15, 1).parent(createDiv('SIZE').addClass('slider-row').parent(col1));
-  sliderPattern = createSlider(0, 12, 0, 1).parent(createDiv('PATTERN').addClass('slider-row').parent(col1));
-  sliderThreshold = createSlider(1, 255, 10, 1).parent(createDiv('THRESHOLD').addClass('slider-row').parent(col2));
-  sliderFactor = createSlider(1, 10, 2, 1).parent(createDiv('FACTOR').addClass('slider-row').parent(col2));
+  btnSave = createButton('SAVE');
+  btnSave.parent(btnRow);
+  btnSave.mousePressed(() => {
+    triggerHighResSave();
+  });
 
-  menuImages = createSelect().parent(col3);
-  ["mask.png", "hugo.jpg", "manypupuner.jpg", "me.jpeg"].forEach(n => menuImages.option(n));
+  btnUpload = createFileInput(handleFile);
+  btnUpload.parent(panelContainer);
+
+  let menuRow = createDiv('SELECT IMAGE:<br>');
+  menuRow.parent(panelContainer);
+  menuRow.style('margin-top', '8px'); 
+  
+  menuImages = createSelect();
+  menuImages.parent(menuRow);
+  menuImages.style('width', '100%');
+  menuImages.style('margin-top', '4px'); 
+  
+  for (let i = 0; i < defaultImages.length; i++) {
+    menuImages.option(defaultImages[i]);
+  }
   menuImages.changed(handleMenuChange);
 
-  let btnRow = createDiv('').parent(col3).style('display', 'flex').style('gap', '10px');
-  createButton('RESET').parent(btnRow).mousePressed(() => isSelected = false);
-  createButton('SAVE').parent(btnRow).mousePressed(triggerHighResSave);
-  createFileInput(handleFile).parent(col3).style('margin-top', '5px');
-
-  sliderSize.input(() => rectS = sliderSize.value());
-  sliderPattern.input(() => patternIndex = sliderPattern.value());
-  sliderThreshold.input(() => { threshold = sliderThreshold.value(); if (isSelected) updateMask(); });
-  sliderFactor.input(() => { factor = sliderFactor.value(); updateDitherBase(); });
-
+  selectedColor = color(255);
+  
+  rectS = sliderSize.value();
+  patternIndex = sliderPattern.value();
+  threshold = sliderThreshold.value();
+  
   applyNewImage(img);
 }
 
 function draw() {
   background(0);
-  if (!isSelected) image(ditheredBase, 0, 0, width, height); 
-  else renderToScreen(this);
+  
+  if (!isSelected) {
+    image(ditheredBase, 0, 0, width, height); 
+  } else {
+    renderToScreen(this);
+  }
 }
 
 function renderToScreen(target) {
   target.image(bwImg, 0, 0, width, height); 
-  target.imageMode(CENTER);
+
   let currentP = floor(patternIndex);
+  target.imageMode(CENTER);
+  
   for (let gx = 0; gx < width; gx += rectS) {
     for (let gy = 0; gy < height; gy += rectS) {
-      let wx = floor(map(gx + rectS/2, 0, width, 0, workingImg.width));
-      let wy = floor(map(gy + rectS/2, 0, height, 0, workingImg.height));
-      if (mask[constrain(wx, 0, workingImg.width-1) + constrain(wy, 0, workingImg.height-1) * workingImg.width]) {
-        target.image(tiles[currentP][(floor(gx/rectS)%4) + (floor(gy/rectS)%4)*4], gx + rectS/2, gy + rectS/2, rectS, rectS);
+      
+      let workX = floor(map(gx + rectS / 2, 0, width, 0, workingImg.width));
+      let workY = floor(map(gy + rectS / 2, 0, height, 0, workingImg.height));
+      
+      workX = constrain(workX, 0, workingImg.width - 1);
+      workY = constrain(workY, 0, workingImg.height - 1);
+      
+      let idx = workX + workY * workingImg.width;
+      
+      if (idx >= 0 && idx < mask.length && mask[idx]) {
+        let tIdx = (floor(gx / rectS) % 4) + (floor(gy / rectS) % 4) * 4;
+        target.image(tiles[currentP][tIdx], gx + rectS / 2, gy + rectS / 2, rectS, rectS);
       }
     }
   }
@@ -113,56 +170,175 @@ function renderToScreen(target) {
 }
 
 function triggerHighResSave() {
-  let g = createGraphics(img.width, img.height);
-  g.image(img, 0, 0);
-  g.drawingContext.globalCompositeOperation = 'color';
-  g.fill(0); g.rect(0, 0, img.width, img.height);
-  g.drawingContext.globalCompositeOperation = 'source-over';
-  g.imageMode(CENTER);
-  let s = rectS * (img.width / width);
-  for (let gx = 0; gx < img.width; gx += s) {
-    for (let gy = 0; gy < img.height; gy += s) {
-      let wx = floor(map(gx + s/2, 0, img.width, 0, workingImg.width));
-      let wy = floor(map(gy + s/2, 0, img.height, 0, workingImg.height));
-      if (mask[wx + wy * workingImg.width]) g.image(tiles[floor(patternIndex)][(floor(gx/s)%4) + (floor(gy/s)%4)*4], gx + s/2, gy + s/2, s, s);
+  const MAX_EXPORT_PIXELS = 4000000; 
+  let exportW = img.width;
+  let exportH = img.height;
+  
+  if (exportW * exportH > MAX_EXPORT_PIXELS) {
+    let scale = sqrt(MAX_EXPORT_PIXELS / (exportW * exportH));
+    exportW = floor(exportW * scale);
+    exportH = floor(exportH * scale);
+  }
+
+  let exportCanvas = createGraphics(exportW, exportH);
+  
+  // 1. Рисуем оригинальное цветное фото
+  exportCanvas.image(img, 0, 0, exportW, exportH);
+  
+  // 2. Аппаратное обесцвечивание через нативный контекст браузера (не крашит память)
+  exportCanvas.drawingContext.globalCompositeOperation = 'color';
+  exportCanvas.noStroke();
+  exportCanvas.fill(0); // Накладываем черный цвет, 'color' забирает всю насыщенность
+  exportCanvas.rect(0, 0, exportW, exportH); 
+  
+  // 3. Обязательно возвращаем обычный режим наложения, чтобы узоры рисовались цветом!
+  exportCanvas.drawingContext.globalCompositeOperation = 'source-over'; 
+  
+  let currentP = floor(patternIndex);
+  exportCanvas.imageMode(CENTER);
+  
+  let origRectS = (rectS / canvasDisplayWidth) * exportW;
+  
+  for (let gx = 0; gx < exportW; gx += origRectS) {
+    for (let gy = 0; gy < exportH; gy += origRectS) {
+      
+      let workX = floor(map(gx + origRectS / 2, 0, exportW, 0, workingImg.width));
+      let workY = floor(map(gy + origRectS / 2, 0, exportH, 0, workingImg.height));
+      
+      workX = constrain(workX, 0, workingImg.width - 1);
+      workY = constrain(workY, 0, workingImg.height - 1);
+      
+      let idx = workX + workY * workingImg.width;
+      
+      if (idx >= 0 && idx < mask.length && mask[idx]) {
+        let screenGridX = floor(map(gx, 0, exportW, 0, canvasDisplayWidth) / rectS);
+        let screenGridY = floor(map(gy, 0, exportH, 0, canvasDisplayHeight) / rectS);
+        let tIdx = (screenGridX % 4) + (screenGridY % 4) * 4;
+        
+        exportCanvas.image(tiles[currentP][tIdx], gx + origRectS / 2, gy + origRectS / 2, origRectS, origRectS);
+      }
     }
   }
-  g.save('art.png'); g.remove();
+  
+  let timestamp = floor(Date.now() / 1000);
+  let fileName = `render_${timestamp}.png`;
+  
+  setTimeout(() => {
+    exportCanvas.elt.toBlob(function(blob) {
+      if (blob) {
+        let url = URL.createObjectURL(blob);
+        let a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          exportCanvas.remove();
+        }, 300);
+      } else {
+        exportCanvas.save(fileName);
+        exportCanvas.remove();
+      }
+    }, 'image/png');
+  }, 50);
 }
 
-function handleInput(x, y) {
-  selectedColor = ditheredBase.get(floor(map(x, 0, width, 0, workingImg.width)), floor(map(y, 0, height, 0, workingImg.height)));
-  updateMask(); isSelected = true;
+function mousePressed(event) {
+  if (touches.length > 0) return; 
+  if (event && event.target && event.target.tagName.toLowerCase() !== 'canvas') return;
+
+  handleInput(mouseX, mouseY);
 }
 
-function mousePressed(e) { if(e.target.tagName === 'CANVAS') handleInput(mouseX, mouseY); }
-function touchStarted(e) { if(e.target.tagName === 'CANVAS') { handleInput(touches[0].x, touches[0].y); return false; } }
+function touchStarted(event) {
+  if (event && event.target && event.target.tagName.toLowerCase() !== 'canvas') return;
+  
+  if (touches && touches.length > 0) {
+    handleInput(touches[0].x, touches[0].y);
+  }
+  
+  return false; 
+}
+
+function handleInput(targetX, targetY) {
+  if (targetX >= 0 && targetX < width && targetY >= 0 && targetY < height) {
+    let workX = floor(map(targetX, 0, width, 0, workingImg.width));
+    let workY = floor(map(targetY, 0, height, 0, workingImg.height));
+    
+    workX = constrain(workX, 0, workingImg.width - 1);
+    workY = constrain(workY, 0, workingImg.height - 1);
+    
+    selectedColor = ditheredBase.get(workX, workY);
+    updateMask(); 
+    isSelected = true;
+  }
+}
 
 function updateMask() {
   ditheredBase.loadPixels();
-  let [r0, g0, b0] = [red(selectedColor), green(selectedColor), blue(selectedColor)];
-  mask = new Array(workingImg.width * workingImg.height);
-  for (let i = 0; i < ditheredBase.pixels.length; i += 4) {
-    let d = sqrt(pow(ditheredBase.pixels[i]-r0, 2) + pow(ditheredBase.pixels[i+1]-g0, 2) + pow(ditheredBase.pixels[i+2]-b0, 2));
-    mask[i/4] = (d < threshold);
+  let selR = red(selectedColor);
+  let selG = green(selectedColor);
+  let selB = blue(selectedColor);
+
+  let len = ditheredBase.pixels.length;
+  if (mask.length !== len / 4) {
+    mask = new Array(len / 4).fill(false);
+  }
+
+  for (let i = 0; i < len; i += 4) {
+    let r = ditheredBase.pixels[i];
+    let g = ditheredBase.pixels[i + 1];
+    let b = ditheredBase.pixels[i + 2];
+    
+    let rd = r - selR;
+    let gd = g - selG;
+    let bd = b - selB;
+    let d = sqrt(rd*rd + gd*gd + bd*bd);
+    
+    mask[i / 4] = (d < threshold);
   }
 }
 
-function updateDitherBase() { ditheredBase = workingImg.get(); applyFullDither(ditheredBase, factor); if (isSelected) updateMask(); }
+function updateDitherBase() {
+  ditheredBase = workingImg.get();
+  applyFullDither(ditheredBase, factor);
+  if (isSelected) updateMask();
+}
 
 function applyFullDither(p, f) {
   p.loadPixels();
-  for (let y = 0; y < p.height; y++) {
-    for (let x = 0; x < p.width; x++) {
-      let i = (x + y * p.width) * 4;
-      let r = Math.round(f * p.pixels[i]/255) * Math.floor(255/f);
-      let g = Math.round(f * p.pixels[i+1]/255) * Math.floor(255/f);
-      let b = Math.round(f * p.pixels[i+2]/255) * Math.floor(255/f);
-      let er = (p.pixels[i] - r)/8, eg = (p.pixels[i+1] - g)/8, eb = (p.pixels[i+2] - b)/8;
-      p.pixels[i] = r; p.pixels[i+1] = g; p.pixels[i+2] = b;
-      distErr(p, x+1, y, er, eg, eb); distErr(p, x+2, y, er, eg, eb);
-      distErr(p, x-1, y+1, er, eg, eb); distErr(p, x, y+1, er, eg, eb);
-      distErr(p, x+1, y+1, er, eg, eb); distErr(p, x, y+2, er, eg, eb);
+  let w = p.width;
+  let h = p.height;
+  
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let idx = (x + y * w) * 4;
+      
+      let oldR = p.pixels[idx];
+      let oldG = p.pixels[idx + 1];
+      let oldB = p.pixels[idx + 2];
+      
+      let nR = Math.round(f * oldR / 255) * Math.floor(255 / f);
+      let nG = Math.round(f * oldG / 255) * Math.floor(255 / f);
+      let nB = Math.round(f * oldB / 255) * Math.floor(255 / f);
+      
+      p.pixels[idx] = nR;
+      p.pixels[idx + 1] = nG;
+      p.pixels[idx + 2] = nB;
+      
+      let errR = (oldR - nR) / 8.0;
+      let errG = (oldG - nG) / 8.0;
+      let errB = (oldB - nB) / 8.0;
+      
+      distErr(p, x + 1, y, errR, errG, errB); 
+      distErr(p, x + 2, y, errR, errG, errB);
+      distErr(p, x - 1, y + 1, errR, errG, errB); 
+      distErr(p, x, y + 1, errR, errG, errB);
+      distErr(p, x + 1, y + 1, errR, errG, errB); 
+      distErr(p, x, y + 2, errR, errG, errB);
     }
   }
   p.updatePixels();
@@ -171,23 +347,72 @@ function applyFullDither(p, f) {
 function distErr(p, x, y, er, eg, eb) {
   if (x >= 0 && x < p.width && y >= 0 && y < p.height) {
     let i = (x + y * p.width) * 4;
-    p.pixels[i] = constrain(p.pixels[i] + er, 0, 255);
-    p.pixels[i+1] = constrain(p.pixels[i+1] + eg, 0, 255);
-    p.pixels[i+2] = constrain(p.pixels[i+2] + eb, 0, 255);
+    p.pixels[i]     = Math.min(255, Math.max(0, p.pixels[i] + er));
+    p.pixels[i + 1] = Math.min(255, Math.max(0, p.pixels[i + 1] + eg));
+    p.pixels[i + 2] = Math.min(255, Math.max(0, p.pixels[i + 2] + eb));
   }
 }
 
-function handleFile(file) { if (file.type === 'image') loadImage(file.data, applyNewImage); }
-function handleMenuChange() { loadImage(`./data/${menuImages.value()}`, applyNewImage); }
-function windowResized() { applyNewImage(img); }
+function handleFile(file) {
+  if (file.type === 'image') {
+    loadImage(file.data, newImg => {
+      applyNewImage(newImg);
+    });
+  }
+}
+
+function handleMenuChange() {
+  let selectedName = menuImages.value();
+  loadImage(`./data/${selectedName}`, newImg => {
+    applyNewImage(newImg);
+  });
+}
+
+function windowResized() {
+  applyNewImage(img);
+}
 
 function applyNewImage(newImg) {
-  img = newImg; workingImg = img.get();
-  if (max(workingImg.width, workingImg.height) > MAX_WORKING_SIZE) workingImg.resize(MAX_WORKING_SIZE, 0);
-  let ratio = img.width / img.height;
-  let w = min(windowWidth - 40, 800);
-  resizeCanvas(w, w / ratio);
-  bwImg = workingImg.get(); bwImg.filter(GRAY);
+  img = newImg; 
+  
+  workingImg = img.get();
+  if (workingImg.width > MAX_WORKING_SIZE || workingImg.height > MAX_WORKING_SIZE) {
+    if (workingImg.width > workingImg.height) {
+      workingImg.resize(MAX_WORKING_SIZE, 0);
+    } else {
+      workingImg.resize(0, MAX_WORKING_SIZE);
+    }
+  }
+  
+  let imgRatio = img.width / img.height;
+  canvasDisplayHeight = MAX_DISPLAY_HEIGHT;
+  
+  let maxAvailableWidth = windowWidth - 190; 
+  canvasDisplayWidth = Math.floor(MAX_DISPLAY_HEIGHT * imgRatio);
+  
+  if (canvasDisplayWidth > maxAvailableWidth) {
+    canvasDisplayWidth = maxAvailableWidth;
+    canvasDisplayHeight = Math.floor(canvasDisplayWidth / imgRatio);
+  }
+  
+  resizeCanvas(canvasDisplayWidth, canvasDisplayHeight);
+  
+  let marginLeft = Math.floor((windowWidth - canvasDisplayWidth) / 2);
+  let marginTop = Math.floor((windowHeight - canvasDisplayHeight) / 2);
+  
+  let canvasElement = select('canvas');
+  if (canvasElement) {
+    canvasElement.style('margin-left', marginLeft + 'px');
+    canvasElement.style('margin-top', marginTop + 'px');
+    canvasElement.style('width', canvasDisplayWidth + 'px');
+    canvasElement.style('height', canvasDisplayHeight + 'px');
+  }
+  
+  bwImg = workingImg.get();
+  bwImg.filter(GRAY);
+  
   mask = new Array(workingImg.width * workingImg.height).fill(false);
+  isSelected = false; 
+  
   updateDitherBase();
 }

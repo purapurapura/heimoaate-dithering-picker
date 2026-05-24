@@ -11,17 +11,9 @@ let selectedColor;
 let isSelected = false;
 let mask = []; 
 
-// Переменные для зума и панорамирования (перетаскивания)
-let imgScale = 1.0;
-let offsetX = 0;
-let offsetY = 0;
-let isDragging = false;
-let startDragX, startDragY;
-let startOffsetX, startOffsetY;
-
-// Переменные для pinch-to-zoom на мобильных
-let startDiag = 0;
-let startScale = 1.0;
+// Текущие экранные размеры холста (для draw и mouse)
+let canvasDisplayWidth = 100;
+let canvasDisplayHeight = 100;
 
 let baseNames = ["komi", "nenets", "inkeri", "mari", "erzya_moksha", "udmurt", "magyar", "suomi", "eesti", "lappi", "khanty_mansi", "selkup", "nganasan"];
 let defaultImages = ["mask.png", "hugo.jpg", "manypupuner.jpg", "me.jpeg"];
@@ -44,37 +36,34 @@ function preload() {
 }
 
 function setup() {
-  // Создаем холст на всю доступную ширину и высоту окна
-  let cnv = createCanvas(windowWidth, windowHeight);
-  cnv.style('display', 'block');
-  cnv.style('position', 'absolute');
-  cnv.style('left', '0');
-  cnv.style('top', '0');
+  // Создаем базовый холст
+  let cnv = createCanvas(100, 100);
   
-  // HTML-контейнер для интерфейса (слева)
+  // HTML-контейнер для интерфейса (увеличен в 2 раза: width 135px -> 270px, отступы 15px -> 30px)
   panelContainer = createDiv('');
-  panelContainer.position(15, 15);
+  panelContainer.position(30, 30);
   panelContainer.style('background-color', 'rgba(0, 0, 0, 0.85)');
-  panelContainer.style('padding', '8px'); 
-  panelContainer.style('width', '135px'); 
+  panelContainer.style('padding', '16px'); 
+  panelContainer.style('width', '270px'); 
   panelContainer.style('color', '#fff');
   panelContainer.style('font-family', 'sans-serif');
-  panelContainer.style('font-size', '8px'); 
-  panelContainer.style('border-radius', '3px');
+  panelContainer.style('font-size', '16px'); // Текст х2
+  panelContainer.style('border-radius', '6px');
   panelContainer.style('z-index', '999');
-  panelContainer.style('line-height', '1.1');
+  panelContainer.style('line-height', '1.2');
 
   // Защита от кликов и тачей сквозь меню
   panelContainer.elt.addEventListener('mousedown', (e) => { e.stopPropagation(); });
   panelContainer.elt.addEventListener('touchstart', (e) => { e.stopPropagation(); });
 
+  // Стили для увеличенных элементов управления
   let styleSheet = createElement('style', `
-    body { background-color: #1a1a1a; margin: 0; padding: 0; overflow: hidden; }
-    .mini-panel input[type=range] { height: 10px; margin: 2px 0 6px 0; }
-    .mini-panel button { font-size: 8px; padding: 2px 5px; background: #444; color: #FFFFFF; border: none; border-radius: 2px; cursor: pointer; }
+    body { background-color: #1a1a1a; margin: 0; padding: 0; }
+    .mini-panel input[type=range] { height: 20px; margin: 4px 0 12px 0; }
+    .mini-panel button { font-size: 16px; padding: 4px 10px; background: #444; color: #FFFFFF; border: none; border-radius: 4px; cursor: pointer; }
     .mini-panel button:hover { background: #666; }
-    .mini-panel select { font-size: 8px; padding: 1px; background: #333; color: #fff; border: 1px solid #555; }
-    .mini-panel input[type=file] { font-size: 7px; max-width: 100%; color: #aaa; margin-bottom: 6px; }
+    .mini-panel select { font-size: 16px; padding: 4px; background: #333; color: #fff; border: 1px solid #555; }
+    .mini-panel input[type=file] { font-size: 14px; max-width: 100%; color: #aaa; margin-bottom: 12px; }
   `);
   panelContainer.addClass('mini-panel');
 
@@ -107,11 +96,11 @@ function setup() {
 
   let btnRow = createDiv('');
   btnRow.parent(panelContainer);
-  btnRow.style('margin', '6px 0');
+  btnRow.style('margin', '12px 0');
 
   btnReset = createButton('RESET');
   btnReset.parent(btnRow);
-  btnReset.style('margin-right', '5px');
+  btnReset.style('margin-right', '10px');
   btnReset.mousePressed(() => { isSelected = false; });
 
   btnSave = createButton('SAVE');
@@ -127,12 +116,12 @@ function setup() {
 
   let menuRow = createDiv('SELECT IMAGE:<br>');
   menuRow.parent(panelContainer);
-  menuRow.style('margin-top', '4px');
+  menuRow.style('margin-top', '8px');
   
   menuImages = createSelect();
   menuImages.parent(menuRow);
   menuImages.style('width', '100%');
-  menuImages.style('margin-top', '2px');
+  menuImages.style('margin-top', '4px');
   
   for (let i = 0; i < defaultImages.length; i++) {
     menuImages.option(defaultImages[i]);
@@ -149,139 +138,45 @@ function setup() {
 }
 
 function draw() {
-  background(26); // Тот же #1a1a1a
+  background(0);
   
-  // Применяем трансформации: сдвиг в центр экрана + зум пользователя + перетаскивание
-  translate(width / 2 + offsetX, height / 2 + offsetY);
-  scale(imgScale);
-  
-  // Рисуем картинку из её центра
-  imageMode(CENTER);
   if (!isSelected) {
-    image(ditheredBase, 0, 0); 
+    image(ditheredBase, 0, 0, width, height); 
   } else {
     renderToBuffer();
-    image(mainRenderBuffer, 0, 0);
+    image(mainRenderBuffer, 0, 0, width, height);
   }
-  imageMode(CORNER);
 }
 
-// Изменение размеров окна браузера
+// При изменении размеров окна браузера пересчитываем Fit-масштаб холста
 function windowResized() {
-  resizeCanvas(windowWidth, windowHeight);
+  applyNewImage(img);
 }
 
-// Масштабирование колесиком мыши
-function mouseWheel(event) {
-  // Проверяем, что курсор не над меню управления
-  if (mouseX < 165 && mouseY < panelContainer.size().height + 30) return;
-  
-  let zoomFactor = 0.1;
-  if (event.delta > 0) {
-    imgScale -= zoomFactor;
-  } else {
-    imgScale += zoomFactor;
-  }
-  imgScale = constrain(imgScale, 0.2, 5.0); // Ограничение зума от 20% до 500%
-  return false; // Блокируем стандартный скролл страницы
-}
-
+// Обработка клика мыши
 function mousePressed(event) {
   if (touches.length > 0) return; 
   if (event && event.target && event.target.tagName.toLowerCase() !== 'canvas') return;
 
-  // Если зажат пробел или правая кнопка мыши — активируем перетаскивание холста
-  if (keyIsDown(32) || mouseButton === RIGHT) {
-    isDragging = true;
-    startDragX = mouseX;
-    startDragY = mouseY;
-    startOffsetX = offsetX;
-    startOffsetY = offsetY;
-  } else {
-    // Обычный клик — выбираем цвет пикселя
-    let coords = screenToImageCoords(mouseX, mouseY);
-    handleInput(coords.x, coords.y);
-  }
+  handleInput(mouseX, mouseY);
 }
 
-function mouseDragged() {
-  if (touches.length > 0) return;
-  if (isDragging) {
-    offsetX = startOffsetX + (mouseX - startDragX);
-    offsetY = startOffsetY + (mouseY - startDragY);
-  }
-}
-
-function mouseReleased() {
-  isDragging = false;
-}
-
+// Обработка мобильного тача
 function touchStarted(event) {
   if (event && event.target && event.target.tagName.toLowerCase() !== 'canvas') return;
   
-  if (touches && touches.length === 1) {
-    // Одиночный тап — проверяем, не попали ли мы в зону меню (для мобильных)
-    if (touches[0].x < 160 && touches[0].y < panelContainer.size().height + 30) return;
-    
-    let coords = screenToImageCoords(touches[0].x, touches[0].y);
-    handleInput(coords.x, coords.y);
-  } else if (touches && touches.length === 2) {
-    // Двойной тап (щипок) — запоминаем стартовое расстояние для зума
-    startDiag = dist(touches[0].x, touches[0].y, touches[1].x, touches[1].y);
-    startScale = imgScale;
-    
-    // А также стартовую точку для перетаскивания двумя пальцами
-    isDragging = true;
-    startDragX = (touches[0].x + touches[1].x) / 2;
-    startDragY = (touches[0].y + touches[1].y) / 2;
-    startOffsetX = offsetX;
-    startOffsetY = offsetY;
+  if (touches && touches.length > 0) {
+    handleInput(touches[0].x, touches[0].y);
   }
-  return false;
-}
-
-function touchMoved(event) {
-  if (event && event.target && event.target.tagName.toLowerCase() !== 'canvas') return;
-
-  if (touches && touches.length === 2 && isDragging) {
-    // Рассчитываем мобильный зум
-    let newDiag = dist(touches[0].x, touches[0].y, touches[1].x, touches[1].y);
-    if (startDiag > 0) {
-      imgScale = startScale * (newDiag / startDiag);
-      imgScale = constrain(imgScale, 0.2, 5.0);
-    }
-    
-    // Рассчитываем мобильный сдвиг двумя пальцами
-    let currentDragX = (touches[0].x + touches[1].x) / 2;
-    let currentDragY = (touches[0].y + touches[1].y) / 2;
-    offsetX = startOffsetX + (currentDragX - startDragX);
-    offsetY = startOffsetY + (currentDragY - startDragY);
-  }
-  return false;
-}
-
-function touchEnded() {
-  isDragging = false;
-  startDiag = 0;
-}
-
-// Функция перевода экранных координат мыши/тача в реальные координаты пикселей картинки
-function screenToImageCoords(screenX, screenY) {
-  // Разворачиваем матрицу трансформаций обратно
-  let imgX = (screenX - width / 2 - offsetX) / imgScale;
-  let imgY = (screenY - height / 2 - offsetY) / imgScale;
   
-  // Сдвигаем координаты, так как картинка рисуется из центра (CENTER)
-  imgX += img.width / 2;
-  imgY += img.height / 2;
-  
-  return { x: imgX, y: imgY };
+  return false; 
 }
 
+// Единый алгоритм расчета маски
 function handleInput(targetX, targetY) {
-  if (targetX >= 0 && targetX < img.width && targetY >= 0 && targetY < img.height) {
-    let origX = floor(targetX);
-    let origY = floor(targetY);
+  if (targetX >= 0 && targetX < width && targetY >= 0 && targetY < height) {
+    let origX = floor(map(targetX, 0, width, 0, img.width));
+    let origY = floor(map(targetY, 0, height, 0, img.height));
     
     origX = constrain(origX, 0, img.width - 1);
     origY = constrain(origY, 0, img.height - 1);
@@ -408,16 +303,38 @@ function handleMenuChange() {
 function applyNewImage(newImg) {
   img = newImg; 
   
-  // Сбрасываем трансформации при загрузке новой картинки
-  imgScale = 1.0;
-  offsetX = 0;
-  offsetY = 0;
+  // Доступная рабочая зона: вычитаем ширину меню (270px) + отступы с запасом (60px)
+  let menuReservedWidth = 330; 
+  let padding = 40; // Отступы сверху/снизу, чтобы картинка не прилипала к краям экрана
   
-  // Автоматический подбор масштаба, чтобы картинка красиво влезала в экран по умолчанию
-  let padding = 40;
-  let scaleW = (windowWidth - 180 - padding) / img.width;
-  let scaleH = (windowHeight - padding) / img.height;
-  imgScale = Math.min(scaleW, scaleH, 1.0); // Сильно маленькие не увеличиваем больше 100%
+  let availableWidth = windowWidth - menuReservedWidth - padding;
+  let availableHeight = windowHeight - padding;
+  
+  let imgRatio = img.width / img.height;
+  
+  // Логика FIT: подбираем размеры холста так, чтобы картинка заполнила максимум пространства, не обрезаясь
+  if (availableWidth / availableHeight > imgRatio) {
+    // Ограничитель — высота экрана
+    canvasDisplayHeight = availableHeight;
+    canvasDisplayWidth = Math.floor(availableHeight * imgRatio);
+  } else {
+    // Ограничитель — ширина доступной зоны
+    canvasDisplayWidth = availableWidth;
+    canvasDisplayHeight = Math.floor(availableWidth / imgRatio);
+  }
+  
+  resizeCanvas(canvasDisplayWidth, canvasDisplayHeight);
+  
+  // Автоматическое центрирование: считаем отступ слева в оставшемся после меню пространстве
+  let marginLeft = menuReservedWidth + Math.floor((availableWidth - canvasDisplayWidth) / 2);
+  let marginTop = Math.floor((windowHeight - canvasDisplayHeight) / 2);
+  
+  // Применяем вычисленные центры через CSS к тегу canvas
+  let canvasElement = select('canvas');
+  if (canvasElement) {
+    canvasElement.style('margin-left', marginLeft + 'px');
+    canvasElement.style('margin-top', marginTop + 'px');
+  }
   
   mainRenderBuffer = createGraphics(img.width, img.height);
   

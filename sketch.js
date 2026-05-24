@@ -176,30 +176,35 @@ function renderToBuffer() {
   mainRenderBuffer.imageMode(CORNER);
 }
 
-// Обработка клика мыши (только для ПК)
-function mousePressed() {
-  if (touches && touches.length > 0) return; // Игнорируем на мобильных, чтобы не было двойного вызова
+// Обработка клика мыши
+function mousePressed(event) {
+  // Игнорируем тачи (чтобы не было дубля) и клики мимо холста (по меню)
+  if (touches.length > 0) return; 
+  if (event && event.target && event.target.tagName.toLowerCase() !== 'canvas') return;
+
   handleInput(mouseX, mouseY);
 }
 
-// Обработка тача (специально для смартфонов)
-function touchStarted() {
+// Обработка мобильного тача
+function touchStarted(event) {
+  // Если тапнули по нашему меню (слайдерам, кнопкам), разрешаем им работать
+  if (event && event.target && event.target.tagName.toLowerCase() !== 'canvas') return;
+  
   if (touches && touches.length > 0) {
-    // Вычитаем CSS-сдвиг холста (margin-left: 165px, margin-top: 15px)
-    let targetX = touches[0].x - 165;
-    let targetY = touches[0].y - 15;
-    handleInput(targetX, targetY);
+    // Больше ничего не вычитаем — p5.js сам отдает координаты внутри холста!
+    handleInput(touches[0].x, touches[0].y);
   }
-  return false; // Блокирует встроенный мобильный скролл страницы при тапе по холсту
+  
+  return false; // Блокируем скролл страницы только при таппе по самому холсту
 }
 
-// Единая логика для пересчета координат и обновления маски
+// Единый алгоритм расчета маски
 function handleInput(targetX, targetY) {
   if (targetX >= 0 && targetX < width && targetY >= 0 && targetY < height) {
     let origX = floor(map(targetX, 0, width, 0, img.width));
     let origY = floor(map(targetY, 0, height, 0, img.height));
     
-    // Защита от выхода за пределы разрешения исходной картинки
+    // Подстраховка от выхода за границы картинки
     origX = constrain(origX, 0, img.width - 1);
     origY = constrain(origY, 0, img.height - 1);
     

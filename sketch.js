@@ -2,8 +2,10 @@
 let totalShapes = 13;
 let tiles = []; 
 
-let img, bwImg, ditheredBase;
-let rectS = 15; // Теперь это размер ячейки НА ЭКРАНЕ
+let img; // Оригинальное изображение (полное разрешение для сохранения)
+let workingImg; // Облегченная копия для расчетов и дизеринга на экране
+let bwImg, ditheredBase;
+let rectS = 15; 
 let patternIndex = 0; 
 let threshold = 10;
 let factor = 2; 
@@ -11,10 +13,10 @@ let selectedColor;
 let isSelected = false;
 let mask = []; 
 
-// Настройка максимальной высоты окна НА ЭКРАНЕ
+// Лимит для рабочей копии (максимальная сторона в пикселях для стабильности на мобилках)
+const MAX_WORKING_SIZE = 1500; 
 const MAX_DISPLAY_HEIGHT = 800; 
 
-// Текущие экранные размеры холста (для draw и mouse)
 let canvasDisplayWidth = 100;
 let canvasDisplayHeight = 100;
 
@@ -25,7 +27,6 @@ let panelContainer;
 let sliderSize, sliderPattern, sliderThreshold, sliderFactor;
 let btnReset, btnSave, btnUpload, menuImages;
 
-// Буферы для рендеринга в оригинальном качестве
 let mainRenderBuffer; 
 
 function preload() {
@@ -39,13 +40,9 @@ function preload() {
 }
 
 function setup() {
-  // Создаем базовый холст
   let cnv = createCanvas(100, 100);
-  
-  // Переводим холст в абсолютное позиционирование для точного управления координатами
   cnv.style('position', 'absolute');
   
-  // HTML-контейнер для интерфейса
   panelContainer = createDiv('');
   panelContainer.position(30, 30);
   panelContainer.style('background-color', 'rgba(0, 0, 0, 0.85)');
@@ -58,7 +55,6 @@ function setup() {
   panelContainer.style('z-index', '999');
   panelContainer.style('line-height', '1.1');
 
-  // Защита от кликов и тачей сквозь меню
   panelContainer.elt.addEventListener('mousedown', (e) => { e.stopPropagation(); });
   panelContainer.elt.addEventListener('touchstart', (e) => { e.stopPropagation(); });
 
@@ -81,7 +77,6 @@ function setup() {
     return slider;
   }
 
-  // Границы ползунка теперь в экранных пикселях (от 4px до 60px)
   sliderSize = createLabeledSlider("SIZE", 4, 60, 15, 1); 
   sliderPattern = createLabeledSlider("PATTERN", 0, 12, 0, 1);
   sliderThreshold = createLabeledSlider("THRESHOLD", 1, 255, 10, 1);
@@ -161,22 +156,22 @@ function renderToBuffer() {
   let currentP = floor(patternIndex);
   mainRenderBuffer.imageMode(CENTER);
   
-  // Вычисляем, сколько оригинальных пикселей картинки приходится на одну экранную ячейку rectS
+  // Вычисляем шаг сетки для буфера оригинального изображения
   let origRectS = (rectS / width) * img.width;
   
-  // Цикл идет по оригинальным координатам картинки с динамическим шагом origRectS
   for (let gx = 0; gx < img.width; gx += origRectS) {
     for (let gy = 0; gy < img.height; gy += origRectS) {
-      let checkX = floor(gx + origRectS / 2);
-      let checkY = floor(gy + origRectS / 2);
       
-      checkX = constrain(checkX, 0, img.width - 1);
-      checkY = constrain(checkY, 0, img.height - 1);
+      // Находим эквивалентную координату в рабочей уменьшенной маске
+      let workX = floor(map(gx + origRectS / 2, 0, img.width, 0, workingImg.width));
+      let workY = floor(map(gy + origRectS / 2, 0, img.height, 0, workingImg.height));
       
-      let idx = checkX + checkY * img.width;
+      workX = constrain(workX, 0, workingImg.width - 1);
+      workY = constrain(workY, 0, workingImg.height - 1);
+      
+      let idx = workX + workY * workingImg.width;
       
       if (idx >= 0 && idx < mask.length && mask[idx]) {
-        // Чтобы паттерн чередовался корректно, берем экранную сетку
         let screenGridX = floor(map(gx, 0, img.width, 0, width) / rectS);
         let screenGridY = floor(map(gy, 0, img.height, 0, height) / rectS);
         let tIdx = (screenGridX % 4) + (screenGridY % 4) * 4;
@@ -188,7 +183,6 @@ function renderToBuffer() {
   mainRenderBuffer.imageMode(CORNER);
 }
 
-// Обработка клика мыши
 function mousePressed(event) {
   if (touches.length > 0) return; 
   if (event && event.target && event.target.tagName.toLowerCase() !== 'canvas') return;
@@ -196,7 +190,6 @@ function mousePressed(event) {
   handleInput(mouseX, mouseY);
 }
 
-// Обработка мобильного тача
 function touchStarted(event) {
   if (event && event.target && event.target.tagName.toLowerCase() !== 'canvas') return;
   
@@ -207,16 +200,16 @@ function touchStarted(event) {
   return false; 
 }
 
-// Единый алгоритм расчета маски
 function handleInput(targetX, targetY) {
   if (targetX >= 0 && targetX < width && targetY >= 0 && targetY < height) {
-    let origX = floor(map(targetX, 0, width, 0, img.width));
-    let origY = floor(map(targetY, 0, height, 0, img.height));
+    // Привязываем координаты клика к размеру рабочей копии workingImg
+    let workX = floor(map(targetX, 0, width, 0, workingImg.width));
+    let workY = floor(map(targetY, 0, height, 0, workingImg.height));
     
-    origX = constrain(origX, 0, img.width - 1);
-    origY = constrain(origY, 0, img.height - 1);
+    workX = constrain(workX, 0, workingImg.width - 1);
+    workY = constrain(workY, 0, workingImg.height - 1);
     
-    selectedColor = ditheredBase.get(origX, origY);
+    selectedColor = ditheredBase.get(workX, workY);
     updateMask(); 
     isSelected = true;
   }
@@ -248,7 +241,7 @@ function updateMask() {
 }
 
 function updateDitherBase() {
-  ditheredBase = img.get();
+  ditheredBase = workingImg.get();
   applyFullDither(ditheredBase, factor);
   if (isSelected) updateMask();
 }
@@ -320,6 +313,16 @@ function windowResized() {
 function applyNewImage(newImg) {
   img = newImg; 
   
+  // Создаем рабочую копию для вычислений маски экрана
+  workingImg = img.get();
+  if (workingImg.width > MAX_WORKING_SIZE || workingImg.height > MAX_WORKING_SIZE) {
+    if (workingImg.width > workingImg.height) {
+      workingImg.resize(MAX_WORKING_SIZE, 0);
+    } else {
+      workingImg.resize(0, MAX_WORKING_SIZE);
+    }
+  }
+  
   let imgRatio = img.width / img.height;
   canvasDisplayHeight = MAX_DISPLAY_HEIGHT;
   
@@ -333,11 +336,9 @@ function applyNewImage(newImg) {
   
   resizeCanvas(canvasDisplayWidth, canvasDisplayHeight);
   
-  // Рассчитываем маргины для идеального выравнивания по центру всего экрана
   let marginLeft = Math.floor((windowWidth - canvasDisplayWidth) / 2);
   let marginTop = Math.floor((windowHeight - canvasDisplayHeight) / 2);
   
-  // Принудительно выставляем координаты холсту
   let canvasElement = select('canvas');
   if (canvasElement) {
     canvasElement.style('margin-left', marginLeft + 'px');
@@ -349,7 +350,8 @@ function applyNewImage(newImg) {
   bwImg = img.get();
   bwImg.filter(GRAY);
   
-  mask = new Array(img.width * img.height).fill(false);
+  // Маска теперь выделяется под безопасный размер рабочей копии
+  mask = new Array(workingImg.width * workingImg.height).fill(false);
   isSelected = false; 
   
   updateDitherBase();

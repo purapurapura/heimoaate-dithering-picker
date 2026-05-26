@@ -182,16 +182,13 @@ function triggerHighResSave() {
 
   let exportCanvas = createGraphics(exportW, exportH);
   
-  // 1. Рисуем оригинальное цветное фото
   exportCanvas.image(img, 0, 0, exportW, exportH);
   
-  // 2. Аппаратное обесцвечивание через нативный контекст браузера (не крашит память)
   exportCanvas.drawingContext.globalCompositeOperation = 'color';
   exportCanvas.noStroke();
-  exportCanvas.fill(0); // Накладываем черный цвет, 'color' забирает всю насыщенность
+  exportCanvas.fill(0);
   exportCanvas.rect(0, 0, exportW, exportH); 
   
-  // 3. Обязательно возвращаем обычный режим наложения, чтобы узоры рисовались цветом!
   exportCanvas.drawingContext.globalCompositeOperation = 'source-over'; 
   
   let currentP = floor(patternIndex);
